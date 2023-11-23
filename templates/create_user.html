@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset=""UTF-8>
+        <title>Create User</title>
+    </head>
+    <body>
+        Create a new User
+        <form action="create-user" method="post">
+            User Name: <input type="text" name="user-name">
+            <br>
+            Email Address: <input type="text" name="email-address">
+            <br>
+            <input type="submit" value="Create User" id="create-user">
+            <br><br>
+            {% for message in get_flashed_messages()%}
+                {{message}} 
+                <br>
+            {% endfor %}
+        </form>
+    </body>
+</html>
