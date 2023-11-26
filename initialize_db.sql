@@ -2,7 +2,7 @@ create table users (
     user_id integer primary key autoincrement
     , created_at datetime default (datetime())
     , updated_at datetime null
-    , user_name text not null
+    , user_name text not null unique
     , email_address text not null
 );
 

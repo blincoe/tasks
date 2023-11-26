@@ -6,21 +6,82 @@ from  flask import Flask, render_template, request, flash, url_for, redirect
 from waitress import serve
 
 
-class Task:
-    def __init__(self):
-        pass
+class Tasks:
+    def __init__(self, logger, conn):
+        self._logger = logger
+        self._conn = conn
+
+        self._get_task_info_from_db()
+
+    def _get_task_info_from_db(self):
+        self._logger.info('Getting all tasks from database')
+        query = '''
+            select
+                task_id
+                , created_at
+                , updated_at
+                , user_id
+                , title
+                , notes
+                , trigger_date
+                , status
+            from tasks
+            '''
+        self.task_info = pd.read_sql(query, self._conn, index_col='task_id')
+
+    def add_task(self, user_id, task_title, task_description, trigger_date):
+        if trigger_date == '':
+            status = 'open'
+            trigger_date = 'null'
+        else:
+            status = 'scheduled'
+
+        self._logger.info(f'Adding task, {task_title}, from user ID, {user_id}, to database')
+
+        query = f'''
+            insert into tasks (
+                user_id 
+                , title 
+                , notes
+                , trigger_date 
+                , status
+                ) values 
+                (?, ?, ?, ?, ?)
+                ;
+        '''
+        cur = self._conn.cursor()
+        cur.execute(query, (user_id, task_title, task_description, trigger_date, status))
+        self._conn.commit()
+
+        self._get_task_info_from_db()
+
+    def get_task_info(self, task_id):
+        return self.task_info.loc[task_id]
+
 
 class Users:
     def __init__(self, logger, conn):
-        self._conn = conn
         self._logger = logger
+        self._conn = conn
+
         self._get_user_info_from_db()
 
     def _get_user_info_from_db(self):
-        self.user_info = pd.read_sql('select * from users', self._conn)
+        self._logger.info('Getting all users from database')
+        query = '''
+            select
+                user_id
+                , created_at
+                , updated_at
+                , user_name
+                , email_address
+            from users
+            '''
+        self.user_info = pd.read_sql(query, self._conn)
         self.user_names = self.user_info['user_name'].unique()
 
     def add_user(self, user_name, email_address):
+        self._logger.info(f'Adding user, {user_name}, to database')
         sql = f'''
             insert into users (
                 user_name
@@ -35,6 +96,10 @@ class Users:
         
         self._get_user_info_from_db()
 
+    def get_user_id(self, user_name):
+        return self.user_info.loc[self.user_info['user_name'] == user_name, 'user_id'].values[0]
+     
+
 
 class App:
     def __init__(self, app_name, logger):
@@ -47,6 +112,7 @@ class App:
 
         self._add_endpoints()
         self._users = Users(logger, self._conn)
+        self._tasks = Tasks(logger, self._conn)
     
     def _add_endpoints(self):
         self.app.add_url_rule(rule='/', view_func=self._index)
@@ -54,7 +120,19 @@ class App:
         self.app.add_url_rule(rule='/user-login', view_func=self._user_login, methods=['POST'])
         self.app.add_url_rule(rule='/create-user', endpoint='create-user', view_func=self._create_user, methods=['POST', 'GET'])
         self.app.add_url_rule(rule='/create-user-home', endpoint='create-user-home', view_func=self._create_user_home, methods=['POST', 'GET'])
-        self.app.add_url_rule(rule='/user/<user_name>', endpoint='/user/<user_name>', view_func=self._user_login_home, methods=['POST', 'GET'])
+        self.app.add_url_rule(rule='/user/<user_name>', endpoint='/user/<user_name>', view_func=self._user_home, methods=['POST', 'GET'])
+
+        self.app.add_url_rule(rule='/user/<user_name>/create-task-home', endpoint='/user/<user_name>/create-task-home', view_func=self._create_task_home, methods=['POST', 'GET'])
+        self.app.add_url_rule(rule='/user/<user_name>/create-task', endpoint='/user/<user_name>/create-task', view_func=self._create_task, methods=['POST', 'GET'])
+
+
+        self.app.add_url_rule(rule='/task/<task_id>', endpoint='/task/<task_id>', view_func=self._task_home, methods=['POST', 'GET'])
+        #self.app.add_url_rule(rule='/user/<user_name>/close-task', endpoint='/user/<user_name>/close-task', view_func=self._create_task, methods=['POST', 'GET'])
+        #self.app.add_url_rule(rule='/user/<user_name>/modify-task', endpoint='/user/<user_name>/create-task', view_func=self._create_task, methods=['POST', 'GET'])
+        #self.app.add_url_rule(rule='/user/<user_name>/delete-task', endpoint='/user/<user_name>/create-task', view_func=self._create_task, methods=['POST', 'GET'])
+
+        #self.app.add_url_rule(rule='/modify-user', endpoint='modify-user', view_func=self._modify_user, methods=['POST', 'GET'])
+        #self.app.add_url_rule(rule='/delete-user', endpoint='delete-user', view_func=self._delete_user, methods=['POST', 'GET'])
 
     def _index(self):
         return redirect('/login')
@@ -65,6 +143,21 @@ class App:
     def _create_user_home(self):
         return render_template('create_user.html')
     
+    def _task_home(self, task_id):
+        return render_template('task_home.html')
+    
+    def _create_task_home(self, user_name):
+        return render_template('create_task.html', user_name=user_name)
+    
+    def _create_task(self, user_name):
+        task_title = request.form['task-title']
+        task_description = request.form['task-description']
+        trigger_date = request.form['trigger-date']
+        user_id = self._users.get_user_id(user_name)
+        self._tasks.add_task(user_id, task_title, task_description, trigger_date)
+        flash(f'Task Created')
+        return render_template('create_task.html', user_name=user_name)
+    
     def _user_login(self):
         user_name = request.form['user-name']
         if user_name not in self._users.user_names:
@@ -73,7 +166,8 @@ class App:
         else:
             return redirect(f'/user/{user_name}')
     
-    def _user_login_home(self, user_name):
+    def _user_home(self, user_name):
+            #tasks = self.tasks.loc[user_name, :]
             return render_template('user_home.html', user_name=user_name)
     
     def _create_user(self):
@@ -82,7 +176,7 @@ class App:
         valid_new_user_info, message = self._validate_new_user_info(user_name, email_address)
         if valid_new_user_info:
             self._users.add_user(user_name, email_address)
-            return render_template('user_home.html')
+            return redirect(f'/user/{user_name}')
         else:
             flash(message)
             return render_template('create_user.html')

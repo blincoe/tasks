@@ -6,6 +6,15 @@
     </head>
     <body>
     Welcome {{user_name}}
+    <br>
+    <form action="/user/{{user_name}}/create-task-home" method="post"><input type="submit" value="Create New Task"></form>
+    <br>
+    Open Tasks
+    <br>
+    Pending Tasks
+    <br>
+    Recently Closed Tasks
+    <br>
         <!--form action="user-login" method="post">
             User ID: <input type="text" name="user-id">
             <br>

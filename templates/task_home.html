@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset=""UTF-8>
+        <title>Create User</title>
+    </head>
+    <body>
+        Create a new Task
+        <form action="/user/{{user_name}}/create-task" method="post">
+            User Name: {{user_name}}
+            <br>
+            Title: <input type="text" name="task-title">
+            <br>
+            Description: <input type="text" name="task-description">
+            <br>
+            Trigger Date: <input type="date" name="trigger-date">
+            <br>
+            <input type="submit" value="Create Task" id="/user/{{user_name}}/create-task">
+            <br><br>
+            {% for message in get_flashed_messages()%}
+                {{message}} 
+                <br>
+            {% endfor %}
+        </form>
+        <p><a href="{{ url_for('/user/<user_name>', user_name=user_name) }}">Return to User Home</a></p>
+    </body>
+</html>
