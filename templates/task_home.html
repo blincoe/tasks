@@ -2,26 +2,54 @@
 <html>
     <head>
         <meta charset=""UTF-8>
-        <title>Create User</title>
+        <title>Task Home</title>
     </head>
+    <style>
+        table, th, td {
+            border: 1px solid black;
+            border-collapse: collapse;
+            }
+    </style>
     <body>
-        Create a new Task
-        <form action="/user/{{user_name}}/create-task" method="post">
-            User Name: {{user_name}}
-            <br>
-            Title: <input type="text" name="task-title">
-            <br>
-            Description: <input type="text" name="task-description">
-            <br>
-            Trigger Date: <input type="date" name="trigger-date">
-            <br>
-            <input type="submit" value="Create Task" id="/user/{{user_name}}/create-task">
-            <br><br>
-            {% for message in get_flashed_messages()%}
-                {{message}} 
-                <br>
-            {% endfor %}
+        <table>
+            <tr>
+                <td>Task ID</td>
+                <td>{{task_id|safe}}</td>
+            </tr>
+            <tr>
+                <td>User Name</td>
+                <td>{{user_name|safe}}</td>
+            </tr>
+            <tr>
+                <td>Title</td>
+                <td>{{task_title|safe}}</td>
+            </tr>
+            <tr>
+                <td>Description</td>
+                <td>{{task_description|safe}}</td>
+            </tr>
+            <tr>
+                <td>Status</td>
+                <td>{{task_status|safe}}</td>
+            </tr>
+        </table>
+
+        <form action="/task/{{task_id}}/modify-task-options" method="post">
+
+            <input type="submit" name="action" value="Update Task">
+
+            {% if task_status == 'open': %}
+            <input type="submit" name="action" value="Close Task">
+            {% endif %}
+
+            {% if task_status == 'closed': %}
+            <input type="submit" name="action" value="Reopen Task">
+            {% endif %}
+
+            <input type="submit" name="action" value="Delete Task">
+
         </form>
+    
         <p><a href="{{ url_for('/user/<user_name>', user_name=user_name) }}">Return to User Home</a></p>
     </body>
 </html>

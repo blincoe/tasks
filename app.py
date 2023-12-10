@@ -17,15 +17,18 @@ class Tasks:
         self._logger.info('Getting all tasks from database')
         query = '''
             select
-                task_id
-                , created_at
-                , updated_at
-                , user_id
-                , title
-                , notes
-                , trigger_date
-                , status
+                tasks.task_id
+                , tasks.created_at
+                , tasks.updated_at
+                , tasks.user_id
+                , tasks.title as task_title
+                , tasks.notes as task_description
+                , tasks.trigger_date
+                , tasks.status
+                , users.user_name
             from tasks
+            join users
+                on tasks.user_id = users.user_id
             '''
         self.task_info = pd.read_sql(query, self._conn, index_col='task_id')
 
@@ -50,13 +53,34 @@ class Tasks:
                 ;
         '''
         cur = self._conn.cursor()
-        cur.execute(query, (user_id, task_title, task_description, trigger_date, status))
+        cur.execute(query, (str(user_id), task_title, task_description, trigger_date, status))
         self._conn.commit()
 
         self._get_task_info_from_db()
 
     def get_task_info(self, task_id):
-        return self.task_info.loc[task_id]
+        return self.task_info.loc[int(task_id)]
+    
+    def get_tasks_for_user(self, user_name, status=None):
+        if status is None:
+            return self.task_info.loc[self.task_info['user_name'] == user_name]
+        else:
+            return self.task_info.loc[(self.task_info['user_name'] == user_name) & (self.task_info['status'] == status)]
+        
+    def get_task_table_for_user_and_status(self, user_name, status):
+        tasks_df = self.get_tasks_for_user(user_name, status)
+        if len(tasks_df) == 0:
+            task_html = 'None'
+        else:
+            tasks_df = tasks_df.reset_index()
+            tasks_df['task_description'] = tasks_df.apply(lambda r_: r_['task_description'].replace('\r\n', '<br>'), axis=1)
+            tasks_df['task_link'] = tasks_df.apply(lambda r_: f'''<a href="{url_for('/task/<task_id>', task_id=r_['task_id'])}">link</a>''', axis=1)
+            task_html = tasks_df \
+                .loc[:, ['task_id', 'task_title', 'task_description', 'task_link']] \
+                .rename(columns={'task_id': 'Task ID', 'task_title': 'Title', 'task_description': 'Description', 'task_link': 'Link'}) \
+                .to_html(index=False, render_links=True, escape=False)
+        return task_html
+
 
 
 class Users:
@@ -144,7 +168,23 @@ class App:
         return render_template('create_user.html')
     
     def _task_home(self, task_id):
-        return render_template('task_home.html')
+        task_info = self._tasks.get_task_info(task_id)
+        
+        user_name = task_info['user_name']
+        task_title = task_info['task_title']
+        task_description = task_info['task_description'].replace('\r\n', '<br>')
+        if task_info['status'] == 'scheduled':
+            task_status = f"Scheduled - {task_info['trigger_date']}"
+        else:
+            task_status = task_info['status']
+        return render_template(
+            'task_home.html',
+            task_id=task_id,
+            user_name=user_name,
+            task_title=task_title,
+            task_description=task_description,
+            task_status=task_status,
+            )
     
     def _create_task_home(self, user_name):
         return render_template('create_task.html', user_name=user_name)
@@ -167,8 +207,16 @@ class App:
             return redirect(f'/user/{user_name}')
     
     def _user_home(self, user_name):
-            #tasks = self.tasks.loc[user_name, :]
-            return render_template('user_home.html', user_name=user_name)
+            open_task_html = self._tasks.get_task_table_for_user_and_status(user_name, 'open')
+            scheduled_task_html = self._tasks.get_task_table_for_user_and_status(user_name, 'scheduled')
+            closed_task_html = self._tasks.get_task_table_for_user_and_status(user_name, 'closed')
+            return render_template(
+                'user_home.html', 
+                user_name=user_name,
+                open_tasks=open_task_html,
+                scheduled_tasks=scheduled_task_html,
+                closed_tasks=closed_task_html,
+                )
     
     def _create_user(self):
         user_name = request.form['user-name']

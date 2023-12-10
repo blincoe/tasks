@@ -11,9 +11,18 @@
     <br>
     Open Tasks
     <br>
-    Pending Tasks
+    {{open_tasks|safe}}
+    <br>
+    <br>
+    Scheduled Tasks
+    <br>
+    {{scheduled_tasks|safe}}
+    <br>
     <br>
     Recently Closed Tasks
+    <br>
+    {{closed_tasks|safe}}
+    <br>
     <br>
         <!--form action="user-login" method="post">
             User ID: <input type="text" name="user-id">
