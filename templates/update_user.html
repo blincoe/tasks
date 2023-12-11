@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset=""UTF-8>
+        <title>Update User</title>
+    </head>
+    <body>
+        Update User
+        <form action="update-user" method="post">
+            User Name: {{user_name}}
+            <br>
+            Email Address: <input type="email" name="email-address" value="{{email_address}}">
+            <br>
+            <input type="submit" value="Update User" id="update-user">
+            <br><br>
+            {% for message in get_flashed_messages()%}
+                {{message}} 
+                <br>
+            {% endfor %}
+        </form>
+    </body>
+</html>

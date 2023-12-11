@@ -2,7 +2,7 @@
 <html>
     <head>
         <meta charset=""UTF-8>
-        <title>Task Home</title>
+        <title>Close Task</title>
     </head>
     <style>
         table, th, td {
@@ -34,13 +34,10 @@
             </tr>
         </table>
 
-        <form action="/task/{{task_id}}/modify-task-options" method="post">
+        <form action="/task/{{task_id}}/close-task-options" method="post">
 
-            <input type="submit" name="action" value="Update Task">
-
-            {% if task_status == 'open': %}
             <input type="submit" name="action" value="Close Task">
-            {% endif %}
+            <input type="submit" name="action" value="Close Task and Re-Create">
 
         </form>
     
