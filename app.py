@@ -472,10 +472,14 @@ class App:
     def serve(self):
         serve(self.app, host='0.0.0.0', port=8080, threads=1)
 
+    def run(self, debug=False):
+        self.app.run(debug=debug)
+
     
 
 
 if __name__ == '__main__':
     logger = logging.getLogger('Tasks')
     app = App('Tasks', logger)
-    app.serve()
+    app.run()
+    #app.serve()
