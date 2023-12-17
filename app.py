@@ -116,6 +116,11 @@ class Tasks:
     def update_task(self, task_id, task_title, task_description, trigger_date):
 
         self._logger.info(f'Updating task, {task_id}')
+        if trigger_date == '':
+            status = 'open'
+            trigger_date = 'null'
+        else:
+            status = 'scheduled'
 
         query = f'''
             update tasks 
@@ -123,6 +128,7 @@ class Tasks:
                     title = '{task_title}'
                     , notes = '{task_description}'
                     , trigger_date = '{trigger_date}'
+                    , status = '{status}'
                     , updated_at = datetime()
             where
                 task_id = {task_id}
@@ -246,6 +252,7 @@ class App:
         self.app.add_url_rule(rule='/task/<task_id>/close-task-options', endpoint='/task/<task_id>/close-task-options', view_func=self._close_task_options, methods=['POST', 'GET'])
         self.app.add_url_rule(rule='/task/<task_id>/update', endpoint='/task/<task_id>/update', view_func=self._update_task, methods=['POST', 'GET'])
         self.app.add_url_rule(rule='/task/<task_id>/update-home', endpoint='/task/<task_id>/update-home', view_func=self._update_task_home, methods=['POST', 'GET'])
+        self.app.add_url_rule(rule='/task/<task_id>/close-and-recreate', endpoint='/task/<task_id>/close-and-recreate', view_func=self._close_task_and_recreate, methods=['POST', 'GET'])
 
         #self.app.add_url_rule(rule='/modify-user', endpoint='modify-user', view_func=self._modify_user, methods=['POST', 'GET'])
         #self.app.add_url_rule(rule='/delete-user', endpoint='delete-user', view_func=self._delete_user, methods=['POST', 'GET'])
@@ -282,7 +289,7 @@ class App:
         task_info = self._tasks.get_task_info(task_id)
         user_name = task_info['user_name']
         task_title = task_info['task_title']
-        task_description = task_info['task_description'].replace('\r\n', '<br>')
+        task_description = task_info['task_description']
         if task_info['status'] == 'scheduled':
             task_status = f"Scheduled - {task_info['trigger_date']}"
         else:
@@ -305,7 +312,7 @@ class App:
         task_info = self._tasks.get_task_info(task_id)
         user_name = task_info['user_name']
         task_title = task_info['task_title']
-        task_description = task_info['task_description'].replace('\r\n', '<br>')
+        task_description = task_info['task_description']
         if task_info['status'] == 'scheduled':
             task_status = f"Scheduled - {task_info['trigger_date']}"
         else:
@@ -325,7 +332,20 @@ class App:
         task_info = self._tasks.get_task_info(task_id)
         self._tasks.close_task(task_id)
         user_name = task_info['user_name']
-        redirect(f'/user/{user_name}')
+        return redirect(f'/user/{user_name}')
+
+    def _close_task_and_recreate(self, task_id):
+        task_info = self._tasks.get_task_info(task_id)
+        self._tasks.close_task(task_id)
+        user_name = task_info['user_name']
+        task_title = task_info['task_title']
+        task_description = task_info['task_description']
+        return render_template(
+            'recreate_task.html', 
+            user_name=user_name,
+            task_title=task_title,
+            task_description=task_description,
+            )
     
     def _close_task_home(self, task_id):
         task_info = self._tasks.get_task_info(task_id)

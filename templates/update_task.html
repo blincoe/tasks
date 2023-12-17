@@ -24,10 +24,12 @@
             <br>
             Trigger Date: 
             <br>
-            <input type="date" name="trigger-date" value="{{trigger_date}}">
+            <input type="date" name="trigger-date" value="{{trigger_date|safe}}">
             <br>
             <br>
             Status: {{task_status}}
+            <br>
+            <br>
             <input type="submit" value="Update Task" id="/task/{{task_id}}/update">
             <br>
             <br>
