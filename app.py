@@ -3,7 +3,7 @@ import sqlite3
 import pandas as pd
 import re
 from  flask import Flask, render_template, request, flash, url_for, redirect
-from waitress import serve
+#from waitress import serve
 
 
 class Tasks:
@@ -469,8 +469,8 @@ class App:
     def _delete_user(self, user_name):
         self._users.delete_user(user_name)
 
-    def serve(self):
-        serve(self.app, host='0.0.0.0', port=8080, threads=1)
+#    def serve(self):
+#        serve(self.app, host='0.0.0.0', port=8080, threads=1)
 
     def run(self, debug=False):
         self.app.run(debug=debug)
