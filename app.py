@@ -218,13 +218,12 @@ class Users:
 
 class App:
     def __init__(self, app_name, logger, wd=''):
-        self.app = Flask(app_name)
+        self.app = Flask(app_name, template_folder=f'{wd}templates')
         self.app.secret_key = 'jfjfjhfdjkfd'
 
         self._logger = logger
-        self._wd = wd
 
-        self._conn = sqlite3.connect(f'{self._wd}app.db', check_same_thread=False)
+        self._conn = sqlite3.connect(f'{wd}app.db', check_same_thread=False)
 
         self._add_endpoints()
         self._users = Users(logger, self._conn)
@@ -262,16 +261,16 @@ class App:
         return redirect('/login')
     
     def _login_home(self):
-        return render_template(f'{self._wd}login.html')
+        return render_template('login.html')
     
     def _create_user_home(self):
-        return render_template(f'{self._wd}create_user.html')
+        return render_template('create_user.html')
     
     def _update_user_home(self, user_name):
         user_info = self._users.get_user_info(user_name)
         email_address = user_info['email_address']
         return render_template(
-            f'{self._wd}update_user.html',
+            'update_user.html',
             user_name=user_name,
             email_address=email_address
             )
@@ -281,7 +280,7 @@ class App:
         self._users.update_user(user_name, email_address)
         flash(f'User Updated')
         return render_template(
-            f'{self._wd}update_users.html',
+            'update_users.html',
             user_name=user_name,
             email_address=email_address
             )
@@ -296,7 +295,7 @@ class App:
         else:
             task_status = task_info['status']
         return render_template(
-            f'{self._wd}update_task.html',
+            'update_task.html',
             task_id=task_id,
             user_name=user_name,
             task_title=task_title,
@@ -321,7 +320,7 @@ class App:
 
         flash(f'Task Updated')
         return render_template(
-            f'{self._wd}update_task.html',
+            'update_task.html',
             task_id=task_id,
             user_name=user_name,
             task_title=task_title,
@@ -342,7 +341,7 @@ class App:
         task_title = task_info['task_title']
         task_description = task_info['task_description']
         return render_template(
-            f'{self._wd}recreate_task.html', 
+            'recreate_task.html', 
             user_name=user_name,
             task_title=task_title,
             task_description=task_description,
@@ -358,7 +357,7 @@ class App:
         else:
             task_status = task_info['status']
         return render_template(
-            f'{self._wd}close_task_home.html',
+            'close_task_home.html',
             task_id=task_id,
             user_name=user_name,
             task_title=task_title,
@@ -377,7 +376,7 @@ class App:
         else:
             task_status = task_info['status']
         return render_template(
-            f'{self._wd}task_home.html',
+            'task_home.html',
             task_id=task_id,
             user_name=user_name,
             task_title=task_title,
@@ -386,7 +385,7 @@ class App:
             )
     
     def _create_task_home(self, user_name):
-        return render_template(f'{self._wd}create_task.html', user_name=user_name)
+        return render_template('create_task.html', user_name=user_name)
     
     def _create_task(self, user_name):
         task_title = request.form['task-title']
@@ -394,13 +393,13 @@ class App:
         trigger_date = request.form['trigger-date']
         self._tasks.add_task(user_name, task_title, task_description, trigger_date)
         flash(f'Task Created')
-        return render_template(f'{self._wd}create_task.html', user_name=user_name)
+        return render_template('create_task.html', user_name=user_name)
     
     def _user_login(self):
         user_name = request.form['user-name']
         if user_name not in self._users.user_info.index:
             flash(f'User ID, {user_name}, does not exists. Enter another ID or create a new one.')
-            return render_template(f'{self._wd}login.html')
+            return render_template('login.html')
         else:
             return redirect(f'/user/{user_name}')
     
@@ -409,7 +408,7 @@ class App:
             scheduled_task_html = self._tasks.get_task_table_for_user_and_status(user_name, 'scheduled')
             closed_task_html = self._tasks.get_task_table_for_user_and_status(user_name, 'closed')
             return render_template(
-                f'{self._wd}user_home.html', 
+                'user_home.html', 
                 user_name=user_name,
                 open_tasks=open_task_html,
                 scheduled_tasks=scheduled_task_html,
@@ -425,7 +424,7 @@ class App:
             return redirect(f'/user/{user_name}')
         else:
             flash(message)
-            return render_template(f'{self._wd}create_user.html')
+            return render_template('create_user.html')
 
     def _validate_new_user_info(self, user_name, email_address):
         valid_new_user_info = False
