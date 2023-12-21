@@ -3,7 +3,7 @@ import sqlite3
 import pandas as pd
 import re
 from  flask import Flask, render_template, request, flash, url_for, redirect
-#from waitress import serve
+
 
 
 class Tasks:
@@ -217,13 +217,14 @@ class Users:
 
 
 class App:
-    def __init__(self, app_name, logger):
+    def __init__(self, app_name, logger, wd=''):
         self.app = Flask(app_name)
         self.app.secret_key = 'jfjfjhfdjkfd'
 
         self._logger = logger
+        self._wd = wd
 
-        self._conn = sqlite3.connect('app.db', check_same_thread=False)
+        self._conn = sqlite3.connect(f'{self._wd}app.db', check_same_thread=False)
 
         self._add_endpoints()
         self._users = Users(logger, self._conn)
@@ -261,16 +262,16 @@ class App:
         return redirect('/login')
     
     def _login_home(self):
-        return render_template('login.html')
+        return render_template(f'{self._wd}login.html')
     
     def _create_user_home(self):
-        return render_template('create_user.html')
+        return render_template(f'{self._wd}create_user.html')
     
     def _update_user_home(self, user_name):
         user_info = self._users.get_user_info(user_name)
         email_address = user_info['email_address']
         return render_template(
-            'update_user.html',
+            f'{self._wd}update_user.html',
             user_name=user_name,
             email_address=email_address
             )
@@ -280,7 +281,7 @@ class App:
         self._users.update_user(user_name, email_address)
         flash(f'User Updated')
         return render_template(
-            'update_users.html',
+            f'{self._wd}update_users.html',
             user_name=user_name,
             email_address=email_address
             )
@@ -295,7 +296,7 @@ class App:
         else:
             task_status = task_info['status']
         return render_template(
-            'update_task.html',
+            f'{self._wd}update_task.html',
             task_id=task_id,
             user_name=user_name,
             task_title=task_title,
@@ -320,7 +321,7 @@ class App:
 
         flash(f'Task Updated')
         return render_template(
-            'update_task.html',
+            f'{self._wd}update_task.html',
             task_id=task_id,
             user_name=user_name,
             task_title=task_title,
@@ -341,7 +342,7 @@ class App:
         task_title = task_info['task_title']
         task_description = task_info['task_description']
         return render_template(
-            'recreate_task.html', 
+            f'{self._wd}recreate_task.html', 
             user_name=user_name,
             task_title=task_title,
             task_description=task_description,
@@ -357,7 +358,7 @@ class App:
         else:
             task_status = task_info['status']
         return render_template(
-            'close_task_home.html',
+            f'{self._wd}close_task_home.html',
             task_id=task_id,
             user_name=user_name,
             task_title=task_title,
@@ -376,7 +377,7 @@ class App:
         else:
             task_status = task_info['status']
         return render_template(
-            'task_home.html',
+            f'{self._wd}task_home.html',
             task_id=task_id,
             user_name=user_name,
             task_title=task_title,
@@ -385,7 +386,7 @@ class App:
             )
     
     def _create_task_home(self, user_name):
-        return render_template('create_task.html', user_name=user_name)
+        return render_template(f'{self._wd}create_task.html', user_name=user_name)
     
     def _create_task(self, user_name):
         task_title = request.form['task-title']
@@ -393,13 +394,13 @@ class App:
         trigger_date = request.form['trigger-date']
         self._tasks.add_task(user_name, task_title, task_description, trigger_date)
         flash(f'Task Created')
-        return render_template('create_task.html', user_name=user_name)
+        return render_template(f'{self._wd}create_task.html', user_name=user_name)
     
     def _user_login(self):
         user_name = request.form['user-name']
         if user_name not in self._users.user_info.index:
             flash(f'User ID, {user_name}, does not exists. Enter another ID or create a new one.')
-            return render_template('login.html')
+            return render_template(f'{self._wd}login.html')
         else:
             return redirect(f'/user/{user_name}')
     
@@ -408,7 +409,7 @@ class App:
             scheduled_task_html = self._tasks.get_task_table_for_user_and_status(user_name, 'scheduled')
             closed_task_html = self._tasks.get_task_table_for_user_and_status(user_name, 'closed')
             return render_template(
-                'user_home.html', 
+                f'{self._wd}user_home.html', 
                 user_name=user_name,
                 open_tasks=open_task_html,
                 scheduled_tasks=scheduled_task_html,
@@ -424,7 +425,7 @@ class App:
             return redirect(f'/user/{user_name}')
         else:
             flash(message)
-            return render_template('create_user.html')
+            return render_template(f'{self._wd}create_user.html')
 
     def _validate_new_user_info(self, user_name, email_address):
         valid_new_user_info = False
@@ -469,8 +470,9 @@ class App:
     def _delete_user(self, user_name):
         self._users.delete_user(user_name)
 
-#    def serve(self):
-#        serve(self.app, host='0.0.0.0', port=8080, threads=1)
+    def serve(self):
+        from waitress import serve
+        serve(self.app, host='0.0.0.0', port=8080, threads=1)
 
     def run(self, debug=False):
         self.app.run(debug=debug)
