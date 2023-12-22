@@ -246,13 +246,13 @@ class Users:
 
 
 class App:
-    def __init__(self, app_name, logger, wd=''):
+    def __init__(self, app_name, logger, wd='', db_path='app.db'):
         self.app = Flask(app_name, template_folder=f'{wd}templates')
         self.app.secret_key = 'jfjfjhfdjkfd'
 
         self._logger = logger
 
-        self._conn = sqlite3.connect(f'{wd}app.db', check_same_thread=False)
+        self._conn = sqlite3.connect(db_path, check_same_thread=False)
 
         self._add_endpoints()
         self._users = Users(logger, self._conn)
