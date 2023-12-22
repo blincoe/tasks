@@ -3,7 +3,36 @@ import sqlite3
 import pandas as pd
 import re
 from  flask import Flask, render_template, request, flash, url_for, redirect
+import datetime
 
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.mime.application import MIMEApplication
+import smtplib
+
+
+def send_mail(
+        distribution_list, 
+        email_subject, 
+        sender_address, 
+        smtp_server, 
+        body, 
+        file_buffer=None, 
+        output_file_name=None
+        ):
+    msg = MIMEMultipart()
+    msg['From'] = sender_address
+    msg['To'] = ';'.join(distribution_list)
+    msg['Subject'] = email_subject
+    msg.attach(MIMEText(body, "html"))
+
+    if file_buffer is not None:
+        part = MIMEApplication(file_buffer.getvalue(), Name=output_file_name)
+        part['Content-Disposition'] = f'attachment; filename="{output_file_name}"' 
+        msg.attach(part)
+
+    with smtplib.SMTP(smtp_server) as smtp:
+        smtp.sendmail(sender_address, distribution_list, msg.as_string())
 
 
 class Tasks:
@@ -254,8 +283,8 @@ class App:
         self.app.add_url_rule(rule='/task/<task_id>/update-home', endpoint='/task/<task_id>/update-home', view_func=self._update_task_home, methods=['POST', 'GET'])
         self.app.add_url_rule(rule='/task/<task_id>/close-and-recreate', endpoint='/task/<task_id>/close-and-recreate', view_func=self._close_task_and_recreate, methods=['POST', 'GET'])
 
-        #self.app.add_url_rule(rule='/modify-user', endpoint='modify-user', view_func=self._modify_user, methods=['POST', 'GET'])
-        #self.app.add_url_rule(rule='/delete-user', endpoint='delete-user', view_func=self._delete_user, methods=['POST', 'GET'])
+        self.app.add_url_rule(rule='/weekly-summary', endpoint='/weekly-summary', view_func=self._weekly_summary, methods=['POST', 'GET'])
+        self.app.add_url_rule(rule='/daily-task-trigger', endpoint='/daily-task-trigger', view_func=self._daily_task_trigger, methods=['POST', 'GET'])
 
     def _index(self):
         return redirect('/login')
@@ -469,6 +498,31 @@ class App:
     def _delete_user(self, user_name):
         self._users.delete_user(user_name)
 
+    def _weekly_summary_for_user(self, user_name, user_info):
+        tasks = self._tasks.get_tasks_for_user(user_name)
+
+
+    def _weekly_summary(self):
+        for user_name, user_info in self._users.user_info.iterrows():
+            self._weekly_summary_for_user(user_name, user_info)
+
+    def _daily_task_trigger(self):
+        today = datetime.date.today
+        triggered_tasks = self._tasks.task_info.loc[self._tasks.task_info['trigger_date'] == today, ]
+        for task_id, triggered_task_info in triggered_tasks:
+            self._tasks.update_task(
+                task_id=task_id, 
+                task_title=triggered_task_info['task_title'], 
+                task_description=triggered_task_info['task_description'], 
+                trigger_date=''
+                )
+            self._send_task_trigger_email(triggered_task_info)
+
+    def _send_task_trigger_email(self, triggered_task_info):
+        user_name = triggered_task_info['user_name']
+        user_email = self._users.get_user_info(user_name)['email_address']
+        send_mail(email_subject='', sender_address=user_email, smtp_server='', body='')
+
     def serve(self):
         from waitress import serve
         serve(self.app, host='0.0.0.0', port=8080, threads=1)
@@ -483,4 +537,5 @@ if __name__ == '__main__':
     logger = logging.getLogger('Tasks')
     app = App('Tasks', logger)
     app.run()
+    'smtp.dreamhost.com'
     #app.serve()
