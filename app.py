@@ -445,8 +445,8 @@ class App:
                 )
     
     def _create_user(self):
-        user_name = request.form['user-name']
-        email_address = request.form['email-address']
+        user_name = request.form['user-name'].strip()
+        email_address = request.form['email-address'].strip()
         valid_new_user_info, message = self._validate_new_user_info(user_name, email_address)
         if valid_new_user_info:
             self._users.add_user(user_name, email_address)
@@ -536,6 +536,6 @@ class App:
 if __name__ == '__main__':
     logger = logging.getLogger('Tasks')
     app = App('Tasks', logger)
-    app.run()
+    #app.run()
     'smtp.dreamhost.com'
-    #app.serve()
+    app.serve()
