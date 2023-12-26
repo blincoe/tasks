@@ -2,7 +2,7 @@ import logging
 import sqlite3
 import pandas as pd
 import re
-from  flask import Flask, render_template, request, flash, url_for, redirect
+from  flask import Flask, render_template, request, flash, url_for, redirect, make_response
 import datetime
 
 from email.mime.text import MIMEText
@@ -35,6 +35,10 @@ def send_mail(
         smtp.sendmail(sender_address, distribution_list, msg.as_string())
 
 
+def tomorrow():
+    return (datetime.datetime.now() + datetime.timedelta(1)).strftime('%Y-%m-%d')
+
+
 class Tasks:
     def __init__(self, logger, conn):
         self._logger = logger
@@ -50,8 +54,8 @@ class Tasks:
                 , created_at
                 , updated_at
                 , user_name
-                , title as task_title
-                , notes as task_description
+                , task_title
+                , task_description
                 , trigger_date
                 , status
             from tasks
@@ -70,19 +74,32 @@ class Tasks:
         query = f'''
             insert into tasks (
                 user_name
-                , title 
-                , notes
+                , task_title 
+                , task_description
                 , trigger_date 
                 , status
                 ) values 
                 (?, ?, ?, ?, ?)
+                returning
+                    task_id
+                    , created_at
+                    , updated_at
                 ;
         '''
         cur = self._conn.cursor()
         cur.execute(query, (user_name, task_title, task_description, trigger_date, status))
+        task_id, created_at, updated_at = cur.fetchone()
         self._conn.commit()
 
-        self._get_task_info_from_db()
+        self.task_info.loc[task_id] = [
+            created_at, 
+            updated_at, 
+            user_name, 
+            task_title, 
+            task_description, 
+            trigger_date, 
+            status
+            ]
 
     def get_task_info(self, task_id):
         return self.task_info.loc[int(task_id)]
@@ -111,20 +128,37 @@ class Tasks:
 
         self._logger.info(f'Closing task, {task_id}')
 
+        status, updated_at = 'closed', datetime.datetime.now()
+
         query = f'''
             update tasks 
                 set 
-                    status = 'closed'
-                    , updated_at = datetime()
+                    status = ?
+                    , updated_at = ?
             where
-                task_id = {task_id}
+                task_id = ?
+            returning
+                created_at, 
+                user_name, 
+                task_title, 
+                task_description, 
+                trigger_date
                 ;
         '''
         cur = self._conn.cursor()
-        cur.execute(query)
+        cur.execute(query, (status, updated_at, task_id))
+        created_at, user_name, task_title, task_description, trigger_date = cur.fetchone()
         self._conn.commit()
 
-        self._get_task_info_from_db()
+        self.task_info.loc[int(task_id), ['created_at', 'updated_at', 'user_name', 'task_title', 'task_description', 'trigger_date', 'status']] = [
+            created_at, 
+            updated_at, 
+            user_name, 
+            task_title, 
+            task_description, 
+            trigger_date, 
+            status
+            ]
     
     def delete_task(self, task_id):
 
@@ -133,14 +167,14 @@ class Tasks:
         query = f'''
             delete from tasks 
             where
-                task_id = {task_id}
+                task_id = ?
                 ;
         '''
         cur = self._conn.cursor()
-        cur.execute(query)
+        cur.execute(query, (task_id))
         self._conn.commit()
 
-        self._get_task_info_from_db()
+        self.task_info.drop(int(task_id), inplace=True)
     
     def update_task(self, task_id, task_title, task_description, trigger_date):
 
@@ -151,23 +185,37 @@ class Tasks:
         else:
             status = 'scheduled'
 
+        updated_at = datetime.datetime.now()
+
         query = f'''
             update tasks 
                 set 
-                    title = '{task_title}'
-                    , notes = '{task_description}'
-                    , trigger_date = '{trigger_date}'
-                    , status = '{status}'
-                    , updated_at = datetime()
+                    task_title = ?
+                    , task_description = ?
+                    , trigger_date = ?
+                    , status = ?
+                    , updated_at = ?
             where
-                task_id = {task_id}
+                task_id = ?
+            returning
+                created_at
+                , user_name
                 ;
         '''
         cur = self._conn.cursor()
-        cur.execute(query)
+        cur.execute(query, (task_title, task_description, trigger_date, status, updated_at, task_id))
+        created_at, user_name = cur.fetchone()
         self._conn.commit()
 
-        self._get_task_info_from_db()
+        self.task_info.loc[int(task_id), ['created_at', 'updated_at', 'user_name', 'task_title', 'task_description', 'trigger_date', 'status']] = [
+            created_at, 
+            updated_at, 
+            user_name, 
+            task_title, 
+            task_description, 
+            trigger_date, 
+            status
+            ]
 
 
 class Users:
@@ -197,13 +245,17 @@ class Users:
                 , email_address
                 ) values 
                 (?, ?)
+                returning
+                    created_at
+                    , updated_at
                 ;
         '''
         cur = self._conn.cursor()
         cur.execute(sql, (user_name, email_address))
+        created_at, updated_at = cur.fetchone()
         self._conn.commit()
         
-        self._get_user_info_from_db()
+        self.user_info.loc[user_name] = [created_at, updated_at, email_address]
 
     def get_user_info(self, user_name):
         return self.user_info.loc[user_name]
@@ -222,26 +274,36 @@ class Users:
         cur.execute(query)
         self._conn.commit()
 
-        self._get_user_info_from_db()
+        self.user_info.drop(user_name, inplace=True)
     
     def update_user(self, user_name, email_address):
 
         self._logger.info(f'updating user, {user_name}')
 
+        updated_at = datetime.datetime.now()
+
         query = f'''
             update users 
                 set
-                    email_address = '{email_address}'
-                    , updated_at = datetime()
+                    email_address = ?
+                    , updated_at = ?
             where
-                user_name = {user_name}
+                user_name = ?
+            returning
+                created_at
                 ;
         '''
         cur = self._conn.cursor()
-        cur.execute(query)
+        cur.execute(query, (email_address, updated_at, user_name))
+        created_at = cur.fetchone()
         self._conn.commit()
 
-        self._get_user_info_from_db()
+
+        self.user_info.loc[user_name, ['created_at', 'updated_at', 'email_address']] = [
+            created_at, 
+            updated_at, 
+            email_address
+            ]
      
 
 
@@ -253,6 +315,7 @@ class App:
         self._logger = logger
 
         self._conn = sqlite3.connect(db_path, check_same_thread=False)
+        self._conn.execute("PRAGMA foreign_keys = 1")
 
         self._add_endpoints()
         self._users = Users(logger, self._conn)
@@ -285,6 +348,8 @@ class App:
 
         self.app.add_url_rule(rule='/weekly-summary', endpoint='/weekly-summary', view_func=self._weekly_summary, methods=['POST', 'GET'])
         self.app.add_url_rule(rule='/daily-task-trigger', endpoint='/daily-task-trigger', view_func=self._daily_task_trigger, methods=['POST', 'GET'])
+
+        self.app.after_request(self._add_response_headers)
 
     def _index(self):
         return redirect('/login')
@@ -319,6 +384,7 @@ class App:
         user_name = task_info['user_name']
         task_title = task_info['task_title']
         task_description = task_info['task_description']
+        trigger_date = task_info['trigger_date']
         if task_info['status'] == 'scheduled':
             task_status = f"Scheduled - {task_info['trigger_date']}"
         else:
@@ -330,6 +396,8 @@ class App:
             task_title=task_title,
             task_description=task_description,
             task_status=task_status,
+            trigger_date=trigger_date,
+            min_date=tomorrow(),
             )
     
     def _update_task(self, task_id):
@@ -337,11 +405,12 @@ class App:
         task_description = request.form['task-description']
         trigger_date = request.form['trigger-date']
         self._tasks.update_task(task_id, task_title, task_description, trigger_date)
-
         task_info = self._tasks.get_task_info(task_id)
         user_name = task_info['user_name']
         task_title = task_info['task_title']
         task_description = task_info['task_description']
+        trigger_date = task_info['trigger_date']
+
         if task_info['status'] == 'scheduled':
             task_status = f"Scheduled - {task_info['trigger_date']}"
         else:
@@ -355,6 +424,8 @@ class App:
             task_title=task_title,
             task_description=task_description,
             task_status=task_status,
+            trigger_date=trigger_date,
+            min_date=tomorrow(),
             )
     
     def _close_task(self, task_id):
@@ -374,6 +445,7 @@ class App:
             user_name=user_name,
             task_title=task_title,
             task_description=task_description,
+            min_date=tomorrow(),
             )
     
     def _close_task_home(self, task_id):
@@ -414,7 +486,7 @@ class App:
             )
     
     def _create_task_home(self, user_name):
-        return render_template('create_task.html', user_name=user_name)
+        return render_template('create_task.html', user_name=user_name, min_date=tomorrow())
     
     def _create_task(self, user_name):
         task_title = request.form['task-title']
@@ -422,7 +494,7 @@ class App:
         trigger_date = request.form['trigger-date']
         self._tasks.add_task(user_name, task_title, task_description, trigger_date)
         flash(f'Task Created')
-        return render_template('create_task.html', user_name=user_name)
+        return render_template('create_task.html', user_name=user_name, min_date=tomorrow())
     
     def _user_login(self):
         user_name = request.form['user-name']
@@ -443,6 +515,11 @@ class App:
                 scheduled_tasks=scheduled_task_html,
                 closed_tasks=closed_task_html,
                 )
+    
+    def _add_response_headers(self, response):
+        response.headers['Cache-Control'] = 'no-cache, no-store'
+        response.headers['Pragma'] = 'no-cache'
+        return response
     
     def _create_user(self):
         user_name = request.form['user-name'].strip()
@@ -493,10 +570,14 @@ class App:
             raise ValueError(f"unknown  value: {request.form['action']}")
     
     def _delete_task(self, task_id):
+        task_info = self._tasks.get_task_info(task_id)
         self._tasks.delete_task(task_id)
+        user_name = task_info['user_name']
+        return redirect(f'/user/{user_name}')
     
     def _delete_user(self, user_name):
         self._users.delete_user(user_name)
+        return redirect('/login')
 
     def _weekly_summary_for_user(self, user_name, user_info):
         tasks = self._tasks.get_tasks_for_user(user_name)

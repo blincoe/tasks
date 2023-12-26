@@ -8,7 +8,7 @@
     - Show updated date for closed tasks and order by these dates
     - Make tables prettier (not pandas)
 
-- Append to tasks and users dataframes instead of reloading from database each time. 
+- Make the weekly email optional (and even date?), make the email for task triggering optional
 
 # Installation / Deployment
 

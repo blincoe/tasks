@@ -10,9 +10,12 @@ create table tasks (
     , created_at datetime default (datetime())
     , updated_at datetime null
     , user_name text not null
-    , title text not null
-    , notes text null
+    , task_title text not null
+    , task_description text null
     , trigger_date date null
     , status text not null
+    , constraint fk_users
+        foreign key (user_name)
+        references users(user_name)
+        on delete cascade
 );
-
