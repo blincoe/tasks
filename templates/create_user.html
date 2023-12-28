@@ -8,9 +8,21 @@
     <body>
         Create a new User
         <form action="create-user" method="post">
-            User Name: <input type="text" name="user-name">
+            User Name: <input type="text" name="user_name">
             <br>
-            Email Address: <input type="email" name="email-address">
+            Email Address: <input type="text" name="email_address">
+            <br>
+            Task-trigger Notification Preference: 
+            <select id="trigger_notification_preference" name="trigger_notification_preference">
+                <option value="none">None</option>
+                <option value="email">Email</option>
+            </select>
+            <br>
+            Summary Notification Preference: 
+            <select id="summary_notification_preference" name="summary_notification_preference">
+                <option value="none">None</option>
+                <option value="weekly:friday">Weekly (Friday)</option>
+            </select>
             <br>
             <input type="submit" value="Create User" id="create-user">
             <br><br>

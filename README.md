@@ -8,8 +8,6 @@
     - Show updated date for closed tasks and order by these dates
     - Make tables prettier (not pandas)
 
-- Make the weekly email optional (and even date?), make the email for task triggering optional
-
 # Installation / Deployment
 
 Clone this repo: `git clone https://$GITHUB_TOKEN@github.com/blincoe/tasks.git`

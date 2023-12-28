@@ -62,7 +62,10 @@ class Tasks:
             '''
         self.task_info = pd.read_sql(query, self._conn, index_col='task_id')
 
-    def add_task(self, user_name, task_title, task_description, trigger_date):
+    def add_task(self, user_name, **kwargs):
+        task_title = kwargs['task_title']
+        task_description = kwargs['task_description']
+        trigger_date = kwargs['trigger_date']
         if trigger_date == '':
             status = 'open'
             trigger_date = 'null'
@@ -102,7 +105,7 @@ class Tasks:
             ]
 
     def get_task_info(self, task_id):
-        return self.task_info.loc[int(task_id)]
+        return self.task_info.loc[int(task_id)].to_dict()
     
     def get_tasks_for_user(self, user_name, status=None):
         if status is None:
@@ -176,8 +179,10 @@ class Tasks:
 
         self.task_info.drop(int(task_id), inplace=True)
     
-    def update_task(self, task_id, task_title, task_description, trigger_date):
-
+    def update_task(self, task_id, **kwargs):
+        task_title = kwargs['task_title']
+        task_description = kwargs['task_description']
+        trigger_date = kwargs['trigger_date']
         self._logger.info(f'Updating task, {task_id}')
         if trigger_date == '':
             status = 'open'
@@ -233,32 +238,40 @@ class Users:
                 , created_at
                 , updated_at
                 , email_address
+                , summary_notification_preference
+                , trigger_notification_preference
             from users
             '''
         self.user_info = pd.read_sql(query, self._conn, index_col='user_name')
 
-    def add_user(self, user_name, email_address):
+    def add_user(self, **kwargs):
+        user_name = kwargs['user_name']
+        email_address = kwargs['email_address']
+        summary_notification_preference = kwargs['summary_notification_preference']
+        trigger_notification_preference = kwargs['trigger_notification_preference']
         self._logger.info(f'Adding user, {user_name}, to database')
         sql = f'''
             insert into users (
                 user_name
                 , email_address
+                , summary_notification_preference
+                , trigger_notification_preference
                 ) values 
-                (?, ?)
+                (?, ?, ?, ?)
                 returning
                     created_at
                     , updated_at
                 ;
         '''
         cur = self._conn.cursor()
-        cur.execute(sql, (user_name, email_address))
+        cur.execute(sql, (user_name, email_address, summary_notification_preference, trigger_notification_preference))
         created_at, updated_at = cur.fetchone()
         self._conn.commit()
         
-        self.user_info.loc[user_name] = [created_at, updated_at, email_address]
+        self.user_info.loc[user_name] = [created_at, updated_at, email_address, summary_notification_preference, trigger_notification_preference]
 
     def get_user_info(self, user_name):
-        return self.user_info.loc[user_name]
+        return self.user_info.loc[user_name].to_dict()
     
     def delete_user(self, user_name):
 
@@ -276,8 +289,10 @@ class Users:
 
         self.user_info.drop(user_name, inplace=True)
     
-    def update_user(self, user_name, email_address):
-
+    def update_user(self, user_name, **kwargs):
+        email_address = kwargs['email_address']
+        summary_notification_preference = kwargs['summary_notification_preference']
+        trigger_notification_preference = kwargs['trigger_notification_preference']
         self._logger.info(f'updating user, {user_name}')
 
         updated_at = datetime.datetime.now()
@@ -285,8 +300,10 @@ class Users:
         query = f'''
             update users 
                 set
-                    email_address = ?
-                    , updated_at = ?
+                    updated_at = ?
+                    , email_address = ?
+                    , summary_notification_preference = ?
+                    , trigger_notification_preference = ?
             where
                 user_name = ?
             returning
@@ -294,15 +311,17 @@ class Users:
                 ;
         '''
         cur = self._conn.cursor()
-        cur.execute(query, (email_address, updated_at, user_name))
+        cur.execute(query, (updated_at, email_address, summary_notification_preference, trigger_notification_preference, user_name))
         created_at = cur.fetchone()
         self._conn.commit()
 
 
-        self.user_info.loc[user_name, ['created_at', 'updated_at', 'email_address']] = [
+        self.user_info.loc[user_name, ['created_at', 'updated_at', 'email_address', 'summary_notification_preference', 'trigger_notification_preference']] = [
             created_at, 
             updated_at, 
-            email_address
+            email_address, 
+            summary_notification_preference, 
+            trigger_notification_preference
             ]
      
 
@@ -362,29 +381,24 @@ class App:
     
     def _update_user_home(self, user_name):
         user_info = self._users.get_user_info(user_name)
-        email_address = user_info['email_address']
         return render_template(
             'update_user.html',
             user_name=user_name,
-            email_address=email_address
+            **user_info
             )
     
     def _update_user(self, user_name):
-        email_address = request.form['email-address']
-        self._users.update_user(user_name, email_address)
+        self._users.update_user(user_name, **request.form)
+        user_info = self._users.get_user_info(user_name)
         flash(f'User Updated')
         return render_template(
-            'update_users.html',
+            'update_user.html',
             user_name=user_name,
-            email_address=email_address
+            **user_info
             )
 
     def _update_task_home(self, task_id):
         task_info = self._tasks.get_task_info(task_id)
-        user_name = task_info['user_name']
-        task_title = task_info['task_title']
-        task_description = task_info['task_description']
-        trigger_date = task_info['trigger_date']
         if task_info['status'] == 'scheduled':
             task_status = f"Scheduled - {task_info['trigger_date']}"
         else:
@@ -392,40 +406,25 @@ class App:
         return render_template(
             'update_task.html',
             task_id=task_id,
-            user_name=user_name,
-            task_title=task_title,
-            task_description=task_description,
             task_status=task_status,
-            trigger_date=trigger_date,
             min_date=tomorrow(),
+            **task_info
             )
     
     def _update_task(self, task_id):
-        task_title = request.form['task-title']
-        task_description = request.form['task-description']
-        trigger_date = request.form['trigger-date']
-        self._tasks.update_task(task_id, task_title, task_description, trigger_date)
+        self._tasks.update_task(task_id, **request.form)
         task_info = self._tasks.get_task_info(task_id)
-        user_name = task_info['user_name']
-        task_title = task_info['task_title']
-        task_description = task_info['task_description']
-        trigger_date = task_info['trigger_date']
-
         if task_info['status'] == 'scheduled':
             task_status = f"Scheduled - {task_info['trigger_date']}"
         else:
             task_status = task_info['status']
-
         flash(f'Task Updated')
         return render_template(
             'update_task.html',
             task_id=task_id,
-            user_name=user_name,
-            task_title=task_title,
-            task_description=task_description,
             task_status=task_status,
-            trigger_date=trigger_date,
             min_date=tomorrow(),
+            **task_info
             )
     
     def _close_task(self, task_id):
@@ -437,22 +436,15 @@ class App:
     def _close_task_and_recreate(self, task_id):
         task_info = self._tasks.get_task_info(task_id)
         self._tasks.close_task(task_id)
-        user_name = task_info['user_name']
-        task_title = task_info['task_title']
-        task_description = task_info['task_description']
         return render_template(
-            'recreate_task.html', 
-            user_name=user_name,
-            task_title=task_title,
-            task_description=task_description,
+            'recreate_task.html',
             min_date=tomorrow(),
+            **task_info
             )
     
     def _close_task_home(self, task_id):
         task_info = self._tasks.get_task_info(task_id)
-        user_name = task_info['user_name']
-        task_title = task_info['task_title']
-        task_description = task_info['task_description'].replace('\r\n', '<br>')
+        task_info['task_description'] = task_info['task_description'].replace('\r\n', '<br>')
         if task_info['status'] == 'scheduled':
             task_status = f"Scheduled - {task_info['trigger_date']}"
         else:
@@ -460,18 +452,13 @@ class App:
         return render_template(
             'close_task_home.html',
             task_id=task_id,
-            user_name=user_name,
-            task_title=task_title,
-            task_description=task_description,
             task_status=task_status,
+            **task_info
             )
     
     def _task_home(self, task_id):
         task_info = self._tasks.get_task_info(task_id)
-        
-        user_name = task_info['user_name']
-        task_title = task_info['task_title']
-        task_description = task_info['task_description'].replace('\r\n', '<br>')
+        task_info['task_description'] = task_info['task_description'].replace('\r\n', '<br>')
         if task_info['status'] == 'scheduled':
             task_status = f"Scheduled - {task_info['trigger_date']}"
         else:
@@ -479,25 +466,20 @@ class App:
         return render_template(
             'task_home.html',
             task_id=task_id,
-            user_name=user_name,
-            task_title=task_title,
-            task_description=task_description,
             task_status=task_status,
+            **task_info
             )
     
     def _create_task_home(self, user_name):
         return render_template('create_task.html', user_name=user_name, min_date=tomorrow())
     
     def _create_task(self, user_name):
-        task_title = request.form['task-title']
-        task_description = request.form['task-description']
-        trigger_date = request.form['trigger-date']
-        self._tasks.add_task(user_name, task_title, task_description, trigger_date)
+        self._tasks.add_task(user_name, **request.form)
         flash(f'Task Created')
         return render_template('create_task.html', user_name=user_name, min_date=tomorrow())
     
     def _user_login(self):
-        user_name = request.form['user-name']
+        user_name = request.form['user_name']
         if user_name not in self._users.user_info.index:
             flash(f'User ID, {user_name}, does not exists. Enter another ID or create a new one.')
             return render_template('login.html')
@@ -505,16 +487,16 @@ class App:
             return redirect(f'/user/{user_name}')
     
     def _user_home(self, user_name):
-            open_task_html = self._tasks.get_task_table_for_user_and_status(user_name, 'open')
-            scheduled_task_html = self._tasks.get_task_table_for_user_and_status(user_name, 'scheduled')
-            closed_task_html = self._tasks.get_task_table_for_user_and_status(user_name, 'closed')
-            return render_template(
-                'user_home.html', 
-                user_name=user_name,
-                open_tasks=open_task_html,
-                scheduled_tasks=scheduled_task_html,
-                closed_tasks=closed_task_html,
-                )
+        open_task_html = self._tasks.get_task_table_for_user_and_status(user_name, 'open')
+        scheduled_task_html = self._tasks.get_task_table_for_user_and_status(user_name, 'scheduled')
+        closed_task_html = self._tasks.get_task_table_for_user_and_status(user_name, 'closed')
+        return render_template(
+            'user_home.html', 
+            user_name=user_name,
+            open_tasks=open_task_html,
+            scheduled_tasks=scheduled_task_html,
+            closed_tasks=closed_task_html,
+            )
     
     def _add_response_headers(self, response):
         response.headers['Cache-Control'] = 'no-cache, no-store'
@@ -522,18 +504,22 @@ class App:
         return response
     
     def _create_user(self):
-        user_name = request.form['user-name'].strip()
-        email_address = request.form['email-address'].strip()
-        valid_new_user_info, message = self._validate_new_user_info(user_name, email_address)
+        form = request.form.to_dict()
+        form['user_name'] = form['user_name'].strip()
+        form['email_address'] = form['email_address'].replace(' ', '')
+        valid_new_user_info, message = self._validate_new_user_info(**form)
         if valid_new_user_info:
-            self._users.add_user(user_name, email_address)
+            self._users.add_user(**form)
+            user_name = form['user_name']
             return redirect(f'/user/{user_name}')
         else:
             flash(message)
             return render_template('create_user.html')
 
-    def _validate_new_user_info(self, user_name, email_address):
+    def _validate_new_user_info(self, **kwargs):
         valid_new_user_info = False
+        user_name = kwargs.get('user_name')
+        email_address = kwargs.get('email_address')
         if user_name in self._users.user_info.index:
             message = f'User ID, {user_name}, already exists. Enter another ID.'
         elif not self._validate_user_name(user_name):
@@ -551,7 +537,7 @@ class App:
     
     def _validate_email_address(self, email_address):
         regex = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,7}\b'
-        return re.fullmatch(regex, email_address)
+        return all([bool(re.fullmatch(regex, x_)) for x_ in email_address.split(',')])
     
     def _modify_task_options(self, task_id):
         if request.form['action'] == 'Update Task':
@@ -601,7 +587,7 @@ class App:
 
     def _send_task_trigger_email(self, triggered_task_info):
         user_name = triggered_task_info['user_name']
-        user_email = self._users.get_user_info(user_name)['email_address']
+        user_email = self._users.get_user_info(user_name)['email_address'].split(',')
         send_mail(email_subject='', sender_address=user_email, smtp_server='', body='')
 
     def serve(self):

@@ -7,17 +7,30 @@
     </head>
     <body>
         Update User
-        <form action="update-user" method="post">
+        <form action="/user/{{user_name}}/update" method="post">
             User Name: {{user_name}}
             <br>
-            Email Address: <input type="email" name="email-address" value="{{email_address}}">
+            Email Address: <input type="text" name="email_address" value="{{email_address}}">
             <br>
-            <input type="submit" value="Update User" id="update-user">
+            Task-trigger Notification Preference: 
+            <select id="trigger_notification_preference" name="trigger_notification_preference" value="{{trigger_notification_preference}}">
+                <option value="none">None</option>
+                <option value="email">Email</option>
+            </select>
+            <br>
+            Summary Notification Preference: 
+            <select id="summary_notification_preference" name="summary_notification_preference" value="{{summary_notification_preference}}">
+                <option value="none">None</option>
+                <option value="weekly:friday">Weekly (Friday)</option>
+            </select>
+            <br>
+            <input type="submit" value="Update User" id="/user/{{user_name}}/update" >
             <br><br>
             {% for message in get_flashed_messages()%}
                 {{message}} 
                 <br>
             {% endfor %}
         </form>
+        <p><a href="{{ url_for('/user/<user_name>', user_name=user_name) }}">Return to User Home</a></p>
     </body>
 </html>

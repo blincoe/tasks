@@ -3,6 +3,8 @@ create table users (
     , created_at datetime default (datetime())
     , updated_at datetime null
     , email_address text not null
+    , summary_notification_preference text not null
+    , trigger_notification_preference text not null
 );
 
 create table tasks (
