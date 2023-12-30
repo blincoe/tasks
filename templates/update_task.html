@@ -4,32 +4,31 @@
         <meta charset=""UTF-8>
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Update Task</title>
+        <style>
+            body {font-family:Arial;font-size:10pt}
+            H1 {font-family:Arial;margin-bottom:14px}
+            H2 {font-family:Arial;margin-bottom:12px}
+        </style>
     </head>
     <body>
-        Update Task
+        <H1>Update Task</H1>
         <form action="/task/{{task_id}}/update" method="post">
-            Task ID: {{task_id}}
+            <H2>Task ID: {{task_id}}</H2>
+            <H2>User Name: {{user_name}}</H2>
             <br>
-            User Name: {{user_name}}
-            <br>
-            <br>
-            Title: 
-            <br>
+            <H2>Title: </H2>
             <input type="text" name="task_title" value="{{task_title}}">
             <br>
             <br>
-            Description: 
-            <br>
+            <H2>Description: </H2>
             <textarea id="task_description" name="task_description" rows="4" cols="50">{{task_description|safe}}</textarea>
             <br>
             <br>
-            Trigger Date: 
-            <br>
+            <H2>Trigger Date: </H2>
             <input type="date" name="trigger_date" value="{{trigger_date|safe}}" min="{{min_date}}">
             <br>
             <br>
-            Status: {{task_status}}
-            <br>
+            <H2>Status: {{task_status}}</H2>
             <br>
             <input type="submit" value="Update Task" id="/task/{{task_id}}/update">
             <br>

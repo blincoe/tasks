@@ -3,15 +3,15 @@
     <head>
         <meta charset=""UTF-8>
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Close Task</title>
+        <title>Task Home</title>
         <style>
             body {font-family:Arial;font-size:10pt}
+            H1 {font-family:Arial;margin-bottom:14px}
+            H2 {font-family:Arial;margin-bottom:12px}
             table, th, td {
                 border: 1px solid black;
                 border-collapse: collapse;
                 }
-            H1 {font-family:Arial;margin-bottom:14px}
-            H2 {font-family:Arial;margin-bottom:12px}
         </style>
     </head>
     <body>
@@ -32,19 +32,11 @@
                 <td>Description</td>
                 <td>{{task_description|safe}}</td>
             </tr>
-            <tr>
-                <td>Status</td>
-                <td>{{task_status|safe}}</td>
-            </tr>
         </table>
 
-        <form action="/task/{{task_id}}/close-task-options" method="post">
-
-            <input type="submit" name="action" value="Close Task">
-            <input type="submit" name="action" value="Close Task and Re-Create">
-
-        </form>
+        <br>
     
-        <p><a href="{{ url_for('/user/<user_name>', user_name=user_name) }}">Return to User Home</a></p>
+        <p><a href="{{ url_for('/task/<task_id>', task_id=task_id, _external=True) }}">Task Home</a></p>
+        <p><a href="{{ url_for('/user/<user_name>', user_name=user_name, _external=True) }}">User Home</a></p>
     </body>
 </html>

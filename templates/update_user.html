@@ -4,11 +4,16 @@
         <meta charset=""UTF-8>
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Update User</title>
+        <style>
+            body {font-family:Arial;font-size:10pt}
+            H1 {font-family:Arial;margin-bottom:14px}
+            H2 {font-family:Arial;margin-bottom:12px}
+        </style>
     </head>
     <body>
-        Update User
+        <H1>Update User</H1>
         <form action="/user/{{user_name}}/update" method="post">
-            User Name: {{user_name}}
+            <H2>User Name: {{user_name}}</H2>
             <br>
             Email Address: <input type="text" name="email_address" value="{{email_address}}">
             <br>

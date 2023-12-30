@@ -4,25 +4,26 @@
         <meta charset=""UTF-8>
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Create Task</title>
+        <style>
+            body {font-family:Arial;font-size:10pt}
+            H1 {font-family:Arial;margin-bottom:14px}
+            H2 {font-family:Arial;margin-bottom:12px}
+        </style>
     </head>
     <body>
-        Create a new Task
+        <H1>Create a new Task</H1>
         <form action="/user/{{user_name}}/create-task" method="post">
-            User Name: {{user_name}}
+            <H2>User Name: {{user_name}}</H2>
             <br>
-            <br>
-            Title: 
-            <br>
+            <H2>Title: </H2>
             <input type="text" name="task_title">
             <br>
             <br>
-            Description: 
-            <br>
+            <H2>Description: </H2>
             <textarea id="task_description" name="task_description" rows="4" cols="50"></textarea>
             <br>
             <br>
-            Trigger Date: 
-            <br>
+            <H2>Trigger Date: </H2>
             <input type="date" name="trigger_date" min="{{min_date}}">
             <br>
             <br>

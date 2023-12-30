@@ -1,13 +1,5 @@
 # To-do:
 
-- Implement outside actions: weekly email, daily recurring task creation, schedule with cron
-
-- User Home Task List:
-    - Show trigger date for pending tasks
-    - Show task updated date for open tasks
-    - Show updated date for closed tasks and order by these dates
-    - Make tables prettier (not pandas)
-
 # Installation / Deployment
 
 Clone this repo: `git clone https://$GITHUB_TOKEN@github.com/blincoe/tasks.git`

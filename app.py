@@ -4,6 +4,7 @@ import pandas as pd
 import re
 from  flask import Flask, render_template, request, flash, url_for, redirect, make_response
 import datetime
+import os
 
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -17,6 +18,7 @@ def send_mail(
         sender_address, 
         smtp_server, 
         body, 
+        sender_password=None,
         file_buffer=None, 
         output_file_name=None
         ):
@@ -32,6 +34,8 @@ def send_mail(
         msg.attach(part)
 
     with smtplib.SMTP(smtp_server) as smtp:
+        if sender_password is not None:
+            smtp.login(sender_address, sender_password)
         smtp.sendmail(sender_address, distribution_list, msg.as_string())
 
 
@@ -126,6 +130,39 @@ class Tasks:
                 .rename(columns={'task_id': 'Task ID', 'task_title': 'Title', 'task_description': 'Description', 'task_link': 'Link'}) \
                 .to_html(index=False, render_links=True, escape=False)
         return task_html
+        
+    def get_task_table_for_user_and_status(self, user_name, status):
+        tasks_df = self.get_tasks_for_user(user_name, status)
+        if len(tasks_df) == 0:
+            task_html = 'None'
+        else:
+            tasks_df['task_description'] = tasks_df.apply(lambda r_: r_['task_description'].replace('\r\n', '<br>'), axis=1)
+            date_header = {'open': 'Created Date', 'scheduled': 'Trigger Date', 'closed': 'Close Date'}[status]
+            date_column = {'open': 'created_at', 'scheduled': 'trigger_date', 'closed': 'updated_at'}[status]
+            task_html = f'''
+                <table cellpadding=1 cellspacing=0>
+                    <col width="100">
+                    <col width="200">
+                    <col width="100">
+                    <col width="100">
+                    <tr bgcolor="#002060", style="color:white;" align="center">
+                        <th>Title</th>
+                        <th>Description</th>
+                        <th>{date_header}</th>
+                        <th>Task Link</th>
+                    </tr>
+                '''
+            for task_id, r_ in tasks_df.sort_values(date_column, ascending=(status != 'closed')).iterrows():
+                task_html += f'''
+                    <tr>
+                        <td>{r_['task_title']}</td>
+                        <td>{r_['task_description']}</td>
+                        <td align="center">{r_[date_column][0:10]}</td>
+                        <td align="center"><a href="{url_for('/task/<task_id>', task_id=task_id, _external=True)}">/task/{task_id}</a></td>
+                    </tr>
+                    '''
+            task_html += '</table>'
+        return task_html
     
     def close_task(self, task_id):
 
@@ -155,7 +192,7 @@ class Tasks:
 
         self.task_info.loc[int(task_id), ['created_at', 'updated_at', 'user_name', 'task_title', 'task_description', 'trigger_date', 'status']] = [
             created_at, 
-            updated_at, 
+            str(updated_at), 
             user_name, 
             task_title, 
             task_description, 
@@ -339,6 +376,10 @@ class App:
         self._add_endpoints()
         self._users = Users(logger, self._conn)
         self._tasks = Tasks(logger, self._conn)
+
+        self._sender_address = 'notifications@taskcur.com'
+        self._smtp_server = 'smtp.dreamhost.com'
+
     
     def _add_endpoints(self):
         self.app.add_url_rule(rule='/', view_func=self._index)
@@ -565,30 +606,65 @@ class App:
         self._users.delete_user(user_name)
         return redirect('/login')
 
-    def _weekly_summary_for_user(self, user_name, user_info):
-        tasks = self._tasks.get_tasks_for_user(user_name)
+    def _weekly_summary_for_user(self, user_name, email_address):
+        open_task_html = self._tasks.get_task_table_for_user_and_status(user_name, 'open')
+        scheduled_task_html = self._tasks.get_task_table_for_user_and_status(user_name, 'scheduled')
+        closed_task_html = self._tasks.get_task_table_for_user_and_status(user_name, 'closed')
+        summary_html = render_template(
+            'user_summary.html', 
+            user_name=user_name,
+            open_tasks=open_task_html,
+            scheduled_tasks=scheduled_task_html,
+            closed_tasks=closed_task_html,
+            )
+        send_mail(
+            distribution_list=email_address, 
+            email_subject=f'TaskCur Summary for {user_name}',
+            sender_address=self._sender_address,
+            smtp_server=self._smtp_server,
+            body=summary_html,
+            sender_password=os.getenv('TASKCUR_NOTIFICATIONS_PW'),
+            )
 
 
     def _weekly_summary(self):
         for user_name, user_info in self._users.user_info.iterrows():
-            self._weekly_summary_for_user(user_name, user_info)
+            if user_info['summary_notification_preference'] == 'weekly:friday':
+                email_address = user_info['email_address'].split(',')
+                self._weekly_summary_for_user(user_name, email_address)
+        return ('', 204)
 
     def _daily_task_trigger(self):
-        today = datetime.date.today
-        triggered_tasks = self._tasks.task_info.loc[self._tasks.task_info['trigger_date'] == today, ]
-        for task_id, triggered_task_info in triggered_tasks:
+        today = datetime.date.today()
+        triggered_tasks = self._tasks.task_info.loc[self._tasks.task_info['trigger_date'] == str(today), ]
+        for task_id, triggered_task_info in triggered_tasks.iterrows():
             self._tasks.update_task(
                 task_id=task_id, 
                 task_title=triggered_task_info['task_title'], 
                 task_description=triggered_task_info['task_description'], 
                 trigger_date=''
                 )
-            self._send_task_trigger_email(triggered_task_info)
+            self._send_task_trigger_email(task_id, triggered_task_info)
+        return ('', 204)
 
-    def _send_task_trigger_email(self, triggered_task_info):
+    def _send_task_trigger_email(self, task_id, triggered_task_info):
         user_name = triggered_task_info['user_name']
-        user_email = self._users.get_user_info(user_name)['email_address'].split(',')
-        send_mail(email_subject='', sender_address=user_email, smtp_server='', body='')
+        email_address = self._users.get_user_info(user_name)['email_address'].split(',')
+        trigger_html = render_template(
+            'task_trigger.html', 
+            task_id=task_id,
+            user_name=user_name,
+            task_title=triggered_task_info['task_title'],
+            task_description=triggered_task_info['task_description'],
+            )
+        send_mail(
+            distribution_list=email_address, 
+            email_subject=f"Task Triggered: {triggered_task_info['task_title']}",
+            sender_address=self._sender_address,
+            smtp_server=self._smtp_server,
+            body=trigger_html,
+            sender_password=os.getenv('TASKCUR_NOTIFICATIONS_PW'),
+            )
 
     def serve(self):
         from waitress import serve
