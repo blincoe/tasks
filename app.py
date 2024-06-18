@@ -617,14 +617,17 @@ class App:
             scheduled_tasks=scheduled_task_html,
             closed_tasks=closed_task_html,
             )
-        send_mail(
-            distribution_list=email_address, 
-            email_subject=f'TaskCur Summary for {user_name}',
-            sender_address=self._sender_address,
-            smtp_server=self._smtp_server,
-            body=summary_html,
-            sender_password=os.getenv('TASKCUR_NOTIFICATIONS_PW'),
-            )
+        open_task_count = len(self._tasks.get_tasks_for_user(user_name, 'open'))
+        scheduled_task_count = len(self._tasks.get_tasks_for_user(user_name, 'scheduled'))
+        if open_task_count + scheduled_task_count > 0:
+            send_mail(
+                distribution_list=email_address, 
+                email_subject=f'TaskCur Summary for {user_name}',
+                sender_address=self._sender_address,
+                smtp_server=self._smtp_server,
+                body=summary_html,
+                sender_password=os.getenv('TASKCUR_NOTIFICATIONS_PW'),
+                )
 
 
     def _weekly_summary(self):
@@ -636,7 +639,7 @@ class App:
 
     def _daily_task_trigger(self):
         today = datetime.date.today()
-        triggered_tasks = self._tasks.task_info.loc[self._tasks.task_info['trigger_date'] == str(today), ]
+        triggered_tasks = self._tasks.task_info.loc[self._tasks.task_info['trigger_date'] <= str(today), ]
         for task_id, triggered_task_info in triggered_tasks.iterrows():
             self._tasks.update_task(
                 task_id=task_id, 
