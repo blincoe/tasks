@@ -58,7 +58,7 @@ class Tasks:
         
         self._conn.reconnect()
         cursor = self._conn.cursor()
-        cursor.execute(query)
+        cursor.execute(query, multi=True)
         table_rows = cursor.fetchall()
 
         self.task_info = pd.DataFrame(table_rows, columns=cursor.column_names).set_index('task_id')
@@ -83,7 +83,7 @@ class Tasks:
             
         self._conn.reconnect()
         cursor = self._conn.cursor()
-        cursor.execute(query, (user_name, task_title, task_description, trigger_date, status))
+        cursor.execute(query, (user_name, task_title, task_description, trigger_date, status), multi=True)
         task_id, created_at, updated_at = cursor.fetchone()
         self._conn.close()
 
@@ -160,7 +160,7 @@ class Tasks:
 
         self._conn.reconnect()
         cursor = self._conn.cursor()
-        cursor.execute(query, (status, updated_at, task_id))
+        cursor.execute(query, (status, updated_at, task_id), multi=True)
         created_at, user_name, task_title, task_description, trigger_date = cursor.fetchone()
         self._conn.close()
 
@@ -184,7 +184,7 @@ class Tasks:
 
         self._conn.reconnect()
         cursor = self._conn.cursor()
-        cursor.execute(query, (task_id))
+        cursor.execute(query, (task_id), multi=True)
         self._conn.close()
 
         self.task_info.drop(int(task_id), inplace=True)
@@ -208,7 +208,7 @@ class Tasks:
 
         self._conn.reconnect()
         cursor = self._conn.cursor()
-        cursor.execute(query, (task_title, task_description, trigger_date, status, updated_at, task_id))
+        cursor.execute(query, (task_title, task_description, trigger_date, status, updated_at, task_id), multi=True)
         created_at, user_name  = cursor.fetchone()
         self._conn.close()
 
@@ -238,7 +238,7 @@ class Users:
 
         self._conn.reconnect()
         cursor = self._conn.cursor()
-        cursor.execute(query)
+        cursor.execute(query, multi=True)
         table_rows = cursor.fetchall()
 
         self.user_info = pd.DataFrame(table_rows, columns=cursor.column_names).set_index('user_name')
@@ -257,7 +257,7 @@ class Users:
 
         self._conn.reconnect()
         cursor = self._conn.cursor()
-        cursor.execute(query, (user_name, email_address, summary_notification_preference, trigger_notification_preference, closed_task_display_count_preference))
+        cursor.execute(query, (user_name, email_address, summary_notification_preference, trigger_notification_preference, closed_task_display_count_preference), multi=True)
         created_at, updated_at = cursor.fetchone()
         self._conn.close()
         
@@ -276,7 +276,7 @@ class Users:
         
         self._conn.reconnect()
         cursor = self._conn.cursor()
-        cursor.execute(query, (user_name))
+        cursor.execute(query, (user_name), multi=True)
         self._conn.close()
 
         self.user_info.drop(user_name, inplace=True)
@@ -296,7 +296,7 @@ class Users:
         
         self._conn.reconnect()
         cursor = self._conn.cursor()
-        cursor.execute(query, (updated_at, email_address, summary_notification_preference, trigger_notification_preference, closed_task_display_count_preference, user_name))
+        cursor.execute(query, (updated_at, email_address, summary_notification_preference, trigger_notification_preference, closed_task_display_count_preference, user_name), multi=True)
         created_at = cursor.fetchone()
         self._conn.close()
 
@@ -319,7 +319,7 @@ class Users:
         
         self._conn.reconnect()
         cursor = self._conn.cursor()
-        cursor.execute(query)
+        cursor.execute(query, multi=True)
         self._conn.close()
 
         self._get_user_info_from_db()
