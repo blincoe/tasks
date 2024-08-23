@@ -1,5 +1,5 @@
 import logging
-import sqlite3
+from mysql.connector import connect
 import pandas as pd
 import re
 from  flask import Flask, render_template, request, flash, url_for, redirect, make_response
@@ -53,18 +53,16 @@ class Tasks:
     def _get_task_info_from_db(self):
         self._logger.info('Getting all tasks from database')
         query = '''
-            select
-                task_id
-                , created_at
-                , updated_at
-                , user_name
-                , task_title
-                , task_description
-                , trigger_date
-                , status
-            from tasks
+            call get_task_info;
             '''
-        self.task_info = pd.read_sql(query, self._conn, index_col='task_id')
+        
+        self._conn.reconnect()
+        cursor = self._conn.cursor()
+        cursor.execute(query)
+        table_rows = cursor.fetchall()
+
+        self.task_info = pd.DataFrame(table_rows, columns=cursor.column_names).set_index('task_id')
+        self._conn.close()
 
     def add_task(self, user_name, **kwargs):
         task_title = kwargs['task_title']
@@ -72,41 +70,45 @@ class Tasks:
         trigger_date = kwargs['trigger_date']
         if trigger_date == '':
             status = 'open'
-            trigger_date = 'null'
+            trigger_date = None
         else:
             status = 'scheduled'
+            trigger_date = datetime.datetime.strptime(trigger_date, '%Y-%m-%d').date()
 
         self._logger.info(f'Adding task, {task_title}, from user, {user_name}, to database')
 
-        query = f'''
-            insert into tasks (
-                user_name
-                , task_title 
-                , task_description
-                , trigger_date 
-                , status
-                ) values 
-                (?, ?, ?, ?, ?)
-                returning
-                    task_id
-                    , created_at
-                    , updated_at
-                ;
+        query = '''
+            call add_task (%s, %s, %s, %s, %s);
         '''
-        cur = self._conn.cursor()
-        cur.execute(query, (user_name, task_title, task_description, trigger_date, status))
-        task_id, created_at, updated_at = cur.fetchone()
-        self._conn.commit()
+            
+        self._conn.reconnect()
+        cursor = self._conn.cursor()
+        cursor.execute(query, (user_name, task_title, task_description, trigger_date, status))
+        task_id, created_at, updated_at = cursor.fetchone()
+        self._conn.close()
 
-        self.task_info.loc[task_id] = [
-            created_at, 
-            updated_at, 
-            user_name, 
-            task_title, 
-            task_description, 
-            trigger_date, 
-            status
-            ]
+        #self.task_info.loc[task_id] = [
+        #    created_at, 
+        #    updated_at, 
+        #    user_name, 
+        #    task_title, 
+        #    task_description, 
+        #    trigger_date, 
+        #    status
+        #    ]
+        self.task_info = pd.concat([
+            self.task_info,
+            pd.DataFrame([[
+                created_at, 
+                updated_at, 
+                user_name, 
+                task_title, 
+                task_description, 
+                trigger_date, 
+                status
+                ]], columns=self.task_info.columns, index=[task_id]).astype(self.task_info.dtypes)
+        ])
+        
 
     def get_task_info(self, task_id):
         return self.task_info.loc[int(task_id)].to_dict()
@@ -136,7 +138,7 @@ class Tasks:
         if len(tasks_df) == 0:
             task_html = 'None'
         else:
-            tasks_df['task_description'] = tasks_df.apply(lambda r_: r_['task_description'].replace('\r\n', '<br>'), axis=1)
+            tasks_df.loc[:, 'task_description'] = tasks_df.apply(lambda r_: r_['task_description'].replace('\r\n', '<br>'), axis=1)
             date_header = {'open': 'Created Date', 'scheduled': 'Trigger Date', 'closed': 'Close Date'}[status]
             date_column = {'open': 'created_at', 'scheduled': 'trigger_date', 'closed': 'updated_at'}[status]
             task_html = f'''
@@ -153,11 +155,15 @@ class Tasks:
                     </tr>
                 '''
             for task_id, r_ in tasks_df.sort_values(date_column, ascending=(status != 'closed')).iterrows():
+                if isinstance(r_[date_column], str):
+                    date_col_val = r_[date_column]
+                else:
+                    date_col_val = r_[date_column].strftime('%Y-%m-%d')
                 task_html += f'''
                     <tr>
                         <td>{r_['task_title']}</td>
                         <td>{r_['task_description']}</td>
-                        <td align="center">{r_[date_column][0:10]}</td>
+                        <td align="center">{date_col_val}</td>
                         <td align="center"><a href="{url_for('/task/<task_id>', task_id=task_id, _external=True)}">/task/{task_id}</a></td>
                     </tr>
                     '''
@@ -170,25 +176,15 @@ class Tasks:
 
         status, updated_at = 'closed', datetime.datetime.now()
 
-        query = f'''
-            update tasks 
-                set 
-                    status = ?
-                    , updated_at = ?
-            where
-                task_id = ?
-            returning
-                created_at, 
-                user_name, 
-                task_title, 
-                task_description, 
-                trigger_date
-                ;
+        query = '''
+            call close_task(%s, %s, %s);
         '''
-        cur = self._conn.cursor()
-        cur.execute(query, (status, updated_at, task_id))
-        created_at, user_name, task_title, task_description, trigger_date = cur.fetchone()
-        self._conn.commit()
+
+        self._conn.reconnect()
+        cursor = self._conn.cursor()
+        cursor.execute(query, (status, updated_at, task_id))
+        created_at, user_name, task_title, task_description, trigger_date = cursor.fetchone()
+        self._conn.close()
 
         self.task_info.loc[int(task_id), ['created_at', 'updated_at', 'user_name', 'task_title', 'task_description', 'trigger_date', 'status']] = [
             created_at, 
@@ -204,15 +200,14 @@ class Tasks:
 
         self._logger.info(f'deleting task, {task_id}')
 
-        query = f'''
-            delete from tasks 
-            where
-                task_id = ?
-                ;
+        query = '''
+            call delete_task(%s);
         '''
-        cur = self._conn.cursor()
-        cur.execute(query, (task_id))
-        self._conn.commit()
+
+        self._conn.reconnect()
+        cursor = self._conn.cursor()
+        cursor.execute(query, (task_id))
+        self._conn.close()
 
         self.task_info.drop(int(task_id), inplace=True)
     
@@ -223,31 +218,21 @@ class Tasks:
         self._logger.info(f'Updating task, {task_id}')
         if trigger_date == '':
             status = 'open'
-            trigger_date = 'null'
+            trigger_date = None
         else:
             status = 'scheduled'
 
         updated_at = datetime.datetime.now()
 
-        query = f'''
-            update tasks 
-                set 
-                    task_title = ?
-                    , task_description = ?
-                    , trigger_date = ?
-                    , status = ?
-                    , updated_at = ?
-            where
-                task_id = ?
-            returning
-                created_at
-                , user_name
-                ;
+        query = '''
+            call update_task(%s, %s, %s, %s, %s, %s);
         '''
-        cur = self._conn.cursor()
-        cur.execute(query, (task_title, task_description, trigger_date, status, updated_at, task_id))
-        created_at, user_name = cur.fetchone()
-        self._conn.commit()
+
+        self._conn.reconnect()
+        cursor = self._conn.cursor()
+        cursor.execute(query, (task_title, task_description, trigger_date, status, updated_at, task_id))
+        created_at, user_name  = cursor.fetchone()
+        self._conn.close()
 
         self.task_info.loc[int(task_id), ['created_at', 'updated_at', 'user_name', 'task_title', 'task_description', 'trigger_date', 'status']] = [
             created_at, 
@@ -270,16 +255,16 @@ class Users:
     def _get_user_info_from_db(self):
         self._logger.info('Getting all users from database')
         query = '''
-            select
-                user_name
-                , created_at
-                , updated_at
-                , email_address
-                , summary_notification_preference
-                , trigger_notification_preference
-            from users
+            call get_user_info;
             '''
-        self.user_info = pd.read_sql(query, self._conn, index_col='user_name')
+
+        self._conn.reconnect()
+        cursor = self._conn.cursor()
+        cursor.execute(query)
+        table_rows = cursor.fetchall()
+
+        self.user_info = pd.DataFrame(table_rows, columns=cursor.column_names).set_index('user_name')
+        self._conn.close()
 
     def add_user(self, **kwargs):
         user_name = kwargs['user_name']
@@ -287,23 +272,15 @@ class Users:
         summary_notification_preference = kwargs['summary_notification_preference']
         trigger_notification_preference = kwargs['trigger_notification_preference']
         self._logger.info(f'Adding user, {user_name}, to database')
-        sql = f'''
-            insert into users (
-                user_name
-                , email_address
-                , summary_notification_preference
-                , trigger_notification_preference
-                ) values 
-                (?, ?, ?, ?)
-                returning
-                    created_at
-                    , updated_at
-                ;
+        query = '''
+            call add_user(%s, %s, %s, %s);
         '''
-        cur = self._conn.cursor()
-        cur.execute(sql, (user_name, email_address, summary_notification_preference, trigger_notification_preference))
-        created_at, updated_at = cur.fetchone()
-        self._conn.commit()
+
+        self._conn.reconnect()
+        cursor = self._conn.cursor()
+        cursor.execute(query, (user_name, email_address, summary_notification_preference, trigger_notification_preference))
+        created_at, updated_at = cursor.fetchone()
+        self._conn.close()
         
         self.user_info.loc[user_name] = [created_at, updated_at, email_address, summary_notification_preference, trigger_notification_preference]
 
@@ -314,15 +291,14 @@ class Users:
 
         self._logger.info(f'deleting user, {user_name}')
 
-        query = f'''
-            delete from users 
-            where
-                user_name = '{user_name}'
-                ;
+        query = '''
+            call delete user(%s);
         '''
-        cur = self._conn.cursor()
-        cur.execute(query)
-        self._conn.commit()
+        
+        self._conn.reconnect()
+        cursor = self._conn.cursor()
+        cursor.execute(query, (user_name))
+        self._conn.close()
 
         self.user_info.drop(user_name, inplace=True)
     
@@ -334,27 +310,19 @@ class Users:
 
         updated_at = datetime.datetime.now()
 
-        query = f'''
-            update users 
-                set
-                    updated_at = ?
-                    , email_address = ?
-                    , summary_notification_preference = ?
-                    , trigger_notification_preference = ?
-            where
-                user_name = ?
-            returning
-                created_at
-                ;
+        query = '''
+            call update_user(%s, %s, %s, %s, %s);
         '''
-        cur = self._conn.cursor()
-        cur.execute(query, (updated_at, email_address, summary_notification_preference, trigger_notification_preference, user_name))
-        created_at = cur.fetchone()
-        self._conn.commit()
+        
+        self._conn.reconnect()
+        cursor = self._conn.cursor()
+        cursor.execute(query, (updated_at, email_address, summary_notification_preference, trigger_notification_preference, user_name))
+        created_at = cursor.fetchone()
+        self._conn.close()
 
 
         self.user_info.loc[user_name, ['created_at', 'updated_at', 'email_address', 'summary_notification_preference', 'trigger_notification_preference']] = [
-            created_at, 
+            created_at[0], 
             updated_at, 
             email_address, 
             summary_notification_preference, 
@@ -364,21 +332,28 @@ class Users:
 
 
 class App:
-    def __init__(self, app_name, logger, wd='', db_path='app.db'):
+    def __init__(self, app_name, logger, wd=''):
         self.app = Flask(app_name, template_folder=f'{wd}templates')
         self.app.secret_key = 'jfjfjhfdjkfd'
 
         self._logger = logger
 
-        self._conn = sqlite3.connect(db_path, check_same_thread=False)
-        self._conn.execute("PRAGMA foreign_keys = 1")
+        db_args = {
+            'user': os.getenv('MYSQL_USER'),
+            'password': os.getenv('MYSQL_PASS'),
+            'host': os.getenv('MYSQL_HOST'),
+            'database': os.getenv('MYSQL_TASKS_DB'),
+            'autocommit': True
+        }
+
+        self._conn = connect(**db_args)
 
         self._add_endpoints()
         self._users = Users(logger, self._conn)
         self._tasks = Tasks(logger, self._conn)
 
-        self._sender_address = 'notifications@taskcur.com'
-        self._smtp_server = 'smtp.dreamhost.com'
+        self._sender_address = os.getenv('TASKCUR_NOTIFICATIONS_ADDRESS')
+        self._smtp_server = os.getenv('TASKCUR_NOTIFICATIONS_SERVER')
 
     
     def _add_endpoints(self):
@@ -639,7 +614,7 @@ class App:
 
     def _daily_task_trigger(self):
         today = datetime.date.today()
-        triggered_tasks = self._tasks.task_info.loc[self._tasks.task_info['trigger_date'] <= str(today), ]
+        triggered_tasks = self._tasks.task_info.loc[self._tasks.task_info['trigger_date'] <= today, ]
         for task_id, triggered_task_info in triggered_tasks.iterrows():
             self._tasks.update_task(
                 task_id=task_id, 
@@ -682,6 +657,4 @@ class App:
 if __name__ == '__main__':
     logger = logging.getLogger('Tasks')
     app = App('Tasks', logger)
-    #app.run()
-    'smtp.dreamhost.com'
     app.serve()
