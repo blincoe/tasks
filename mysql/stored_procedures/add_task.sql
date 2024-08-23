@@ -1,11 +1,11 @@
 delimiter //
 
 create procedure add_task (
-    user_name varchar(100)
-    , task_title varchar(280)
-    , task_description varchar(10000)
-    , trigger_date date
-    , status varchar(20)
+    _user_name varchar(100)
+    , _task_title varchar(280)
+    , _task_description varchar(10000)
+    , _trigger_date date
+    , _status varchar(20)
     )
     begin
     
@@ -16,11 +16,11 @@ create procedure add_task (
         , trigger_date 
         , status
         ) values (
-            user_name 
-            , task_title
-            , task_description
-            , trigger_date
-            , status
+            _user_name 
+            , _task_title
+            , _task_description
+            , _trigger_date
+            , _status
             )
         ;
     

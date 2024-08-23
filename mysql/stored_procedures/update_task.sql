@@ -1,24 +1,24 @@
 delimiter //
 
 create procedure update_task (
-    task_title varchar(280)
-    , task_description varchar(10000)
-    , trigger_date date
-    , status varchar(20)
-    , updated_at datetime
-    , task_id integer
+    _task_title varchar(280)
+    , _task_description varchar(10000)
+    , _trigger_date date
+    , _status varchar(20)
+    , _updated_at datetime
+    , _task_id integer
     )
     begin
     
     update tasks 
         set 
-            `task_title` = task_title
-            , `task_description` = task_description
-            , `trigger_date`= trigger_date
-            , `status` = status
-            , `updated_at` = updated_at
+            task_title = _task_title
+            , task_description = _task_description
+            , trigger_date= _trigger_date
+            , status = _status
+            , updated_at = _updated_at
     where
-        `task_id` = task_id
+        task_id = _task_id
         ;
 
     select
@@ -26,7 +26,7 @@ create procedure update_task (
         user_name
     from tasks
     where
-        `task_id` = task_id
+        task_id = _task_id
         ;
     
     end //

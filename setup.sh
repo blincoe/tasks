@@ -18,3 +18,4 @@ mysql -h$MYSQL_HOST -u$MYSQL_USER -p$MYSQL_PASS $MYSQL_TASKS_DB < $base_dir/mysq
 mysql -h$MYSQL_HOST -u$MYSQL_USER -p$MYSQL_PASS $MYSQL_TASKS_DB < $base_dir/mysql/stored_procedures/delete_user.sql
 mysql -h$MYSQL_HOST -u$MYSQL_USER -p$MYSQL_PASS $MYSQL_TASKS_DB < $base_dir/mysql/stored_procedures/update_user.sql
 mysql -h$MYSQL_HOST -u$MYSQL_USER -p$MYSQL_PASS $MYSQL_TASKS_DB < $base_dir/mysql/stored_procedures/get_user_info.sql
+mysql -h$MYSQL_HOST -u$MYSQL_USER -p$MYSQL_PASS $MYSQL_TASKS_DB < $base_dir/mysql/stored_procedures/purge_inactive_users.sql

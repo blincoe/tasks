@@ -1,19 +1,19 @@
 delimiter //
 
 create procedure close_task (
-    status varchar(20)
-    , updated_at datetime
-    , task_id integer
+    _status varchar(20)
+    , _updated_at datetime
+    , _task_id integer
     )
     begin
     
 
     update tasks 
         set 
-            `status` = status
-            , `updated_at` = updated_at
+            status = _status
+            , updated_at = _updated_at
     where
-        `task_id` = task_id
+        task_id = _task_id
         ;
 
     select
@@ -24,7 +24,7 @@ create procedure close_task (
         trigger_date
     from tasks
     where
-        `task_id` = task_id
+        task_id = _task_id
         ;
     
     end //

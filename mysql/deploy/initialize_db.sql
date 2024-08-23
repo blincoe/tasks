@@ -12,3 +12,5 @@ drop procedure if exists close_user;
 drop procedure if exists delete_user;
 drop procedure if exists update_user;
 drop procedure if exists get_user_info;
+
+drop procedure if exists purge_inactive_users;

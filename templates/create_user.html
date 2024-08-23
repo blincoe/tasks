@@ -29,6 +29,8 @@
                 <option value="weekly:friday">Weekly (Friday)</option>
             </select>
             <br>
+            Closed Task Display Count Preference: <input type="number" name="closed_task_display_count_preference" min="0" value="10">
+            <br>
             <input type="submit" value="Create User" id="create-user">
             <br><br>
             {% for message in get_flashed_messages()%}

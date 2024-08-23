@@ -10,6 +10,7 @@ create procedure get_user_info ()
         , email_address
         , summary_notification_preference
         , trigger_notification_preference
+        , closed_task_display_count_preference
     from users
     ;
     
