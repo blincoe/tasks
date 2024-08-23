@@ -37,6 +37,8 @@
                     >Weekly (Friday)</option>
             </select>
             <br>
+            Closed Task Display Count Preference: <input type="number" name="closed_task_display_count_preference" value="{{closed_task_display_count_preference}}">
+            <br>
             <input type="submit" value="Update User" id="/user/{{user_name}}/update" >
             <br><br>
             {% for message in get_flashed_messages()%}
