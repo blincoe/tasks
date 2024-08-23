@@ -52,16 +52,15 @@ class Tasks:
 
     def _get_task_info_from_db(self):
         self._logger.info('Getting all tasks from database')
-        query = '''
-            call get_task_info;
-            '''
+        proc = 'get_task_info'
         
         self._conn.reconnect()
         cursor = self._conn.cursor()
-        cursor.execute(query, multi=True)
-        table_rows = cursor.fetchall()
+        cursor.callproc(proc)
+        proc_result = next(cursor.stored_results())
+        table_rows = proc_result.fetchall()
 
-        self.task_info = pd.DataFrame(table_rows, columns=cursor.column_names).set_index('task_id')
+        self.task_info = pd.DataFrame(table_rows, columns=proc_result.column_names).set_index('task_id')
         self._conn.close()
 
     def add_task(self, user_name, **kwargs):
@@ -77,14 +76,13 @@ class Tasks:
 
         self._logger.info(f'Adding task, {task_title}, from user, {user_name}, to database')
 
-        query = '''
-            call add_task (%s, %s, %s, %s, %s);
-        '''
+        proc = 'add_task'
             
         self._conn.reconnect()
         cursor = self._conn.cursor()
-        cursor.execute(query, (user_name, task_title, task_description, trigger_date, status), multi=True)
-        task_id, created_at, updated_at = cursor.fetchone()
+        cursor.callproc(proc, [user_name, task_title, task_description, trigger_date, status])
+        proc_result = next(cursor.stored_results())
+        task_id, created_at, updated_at = proc_result.fetchone()
         self._conn.close()
 
         self.task_info = pd.concat([
@@ -154,14 +152,13 @@ class Tasks:
 
         status, updated_at = 'closed', datetime.datetime.now()
 
-        query = '''
-            call close_task(%s, %s, %s);
-        '''
+        proc = 'close_task'
 
         self._conn.reconnect()
         cursor = self._conn.cursor()
-        cursor.execute(query, (status, updated_at, task_id), multi=True)
-        created_at, user_name, task_title, task_description, trigger_date = cursor.fetchone()
+        cursor.callproc(proc, [status, updated_at, task_id])
+        proc_result = next(cursor.stored_results())
+        created_at, user_name, task_title, task_description, trigger_date = proc_result.fetchone()
         self._conn.close()
 
         self.task_info.loc[int(task_id), ['created_at', 'updated_at', 'user_name', 'task_title', 'task_description', 'trigger_date', 'status']] = [
@@ -178,13 +175,11 @@ class Tasks:
 
         self._logger.info(f'deleting task, {task_id}')
 
-        query = '''
-            call delete_task(%s);
-        '''
+        proc = 'delete_task'
 
         self._conn.reconnect()
         cursor = self._conn.cursor()
-        cursor.execute(query, (task_id), multi=True)
+        cursor.callproc(proc, [task_id])
         self._conn.close()
 
         self.task_info.drop(int(task_id), inplace=True)
@@ -202,14 +197,13 @@ class Tasks:
 
         updated_at = datetime.datetime.now()
 
-        query = '''
-            call update_task(%s, %s, %s, %s, %s, %s);
-        '''
+        proc = 'update_task'
 
         self._conn.reconnect()
         cursor = self._conn.cursor()
-        cursor.execute(query, (task_title, task_description, trigger_date, status, updated_at, task_id), multi=True)
-        created_at, user_name  = cursor.fetchone()
+        cursor.callproc(proc, [task_title, task_description, trigger_date, status, updated_at, task_id])
+        proc_result = next(cursor.stored_results())
+        created_at, user_name  = proc_result.fetchone()
         self._conn.close()
 
         self.task_info.loc[int(task_id), ['created_at', 'updated_at', 'user_name', 'task_title', 'task_description', 'trigger_date', 'status']] = [
@@ -232,16 +226,15 @@ class Users:
 
     def _get_user_info_from_db(self):
         self._logger.info('Getting all users from database')
-        query = '''
-            call get_user_info;
-            '''
+        proc = 'get_user_info'
 
         self._conn.reconnect()
         cursor = self._conn.cursor()
-        cursor.execute(query, multi=True)
-        table_rows = cursor.fetchall()
+        cursor.callproc(proc)
+        proc_result = next(cursor.stored_results())
+        table_rows = proc_result.fetchall()
 
-        self.user_info = pd.DataFrame(table_rows, columns=cursor.column_names).set_index('user_name')
+        self.user_info = pd.DataFrame(table_rows, columns=proc_result.column_names).set_index('user_name')
         self._conn.close()
 
     def add_user(self, **kwargs):
@@ -251,14 +244,13 @@ class Users:
         trigger_notification_preference = kwargs['trigger_notification_preference']
         closed_task_display_count_preference = kwargs['closed_task_display_count_preference']
         self._logger.info(f'Adding user, {user_name}, to database')
-        query = '''
-            call add_user(%s, %s, %s, %s, %s);
-        '''
+        proc = 'add_user'
 
         self._conn.reconnect()
         cursor = self._conn.cursor()
-        cursor.execute(query, (user_name, email_address, summary_notification_preference, trigger_notification_preference, closed_task_display_count_preference), multi=True)
-        created_at, updated_at = cursor.fetchone()
+        cursor.callproc(proc, [user_name, email_address, summary_notification_preference, trigger_notification_preference, closed_task_display_count_preference])
+        proc_result = next(cursor.stored_results())
+        created_at, updated_at = proc_result.fetchone()
         self._conn.close()
         
         self.user_info.loc[user_name] = [created_at, updated_at, email_address, summary_notification_preference, trigger_notification_preference, closed_task_display_count_preference]
@@ -270,13 +262,11 @@ class Users:
 
         self._logger.info(f'deleting user, {user_name}')
 
-        query = '''
-            call delete_user(%s);
-        '''
+        proc = 'delete_user'
         
         self._conn.reconnect()
         cursor = self._conn.cursor()
-        cursor.execute(query, (user_name), multi=True)
+        cursor.callproc(proc, [user_name])
         self._conn.close()
 
         self.user_info.drop(user_name, inplace=True)
@@ -290,14 +280,13 @@ class Users:
 
         updated_at = datetime.datetime.now()
 
-        query = '''
-            call update_user(%s, %s, %s, %s, %s, %s);
-        '''
+        proc = 'update_user'
         
         self._conn.reconnect()
         cursor = self._conn.cursor()
-        cursor.execute(query, (updated_at, email_address, summary_notification_preference, trigger_notification_preference, closed_task_display_count_preference, user_name), multi=True)
-        created_at = cursor.fetchone()
+        cursor.callproc(proc, [updated_at, email_address, summary_notification_preference, trigger_notification_preference, closed_task_display_count_preference, user_name])
+        proc_result = next(cursor.stored_results())
+        created_at = proc_result.fetchone()
         self._conn.close()
 
 
@@ -313,13 +302,11 @@ class Users:
     def _purge_inactive_users(self):
         self._logger.info(f'purging inactive users')
 
-        query = '''
-            call purge_inactive_users();
-        '''
+        proc = 'purge_inactive_users'
         
         self._conn.reconnect()
         cursor = self._conn.cursor()
-        cursor.execute(query, multi=True)
+        cursor.callproc(proc)
         self._conn.close()
 
         self._get_user_info_from_db()
