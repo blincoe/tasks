@@ -22,7 +22,7 @@ def send_mail(
         file_buffer=None, 
         output_file_name=None
         ):
-    msg = MIMEMultipart()
+    msg = MIMEMultipart('alternative')
     msg['From'] = sender_address
     msg['To'] = ';'.join(distribution_list)
     msg['Subject'] = email_subject
