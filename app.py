@@ -194,6 +194,7 @@ class Tasks:
             trigger_date = None
         else:
             status = 'scheduled'
+            trigger_date = pd.to_datetime(trigger_date).date()
 
         updated_at = datetime.datetime.now()
 
