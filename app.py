@@ -17,8 +17,10 @@ def send_mail(
         email_subject, 
         sender_address, 
         smtp_server, 
-        body, 
-        sender_password=None,
+        smtp_server_user,
+        smtp_server_port,
+        sender_server_password,
+        body,
         file_buffer=None, 
         output_file_name=None
         ):
@@ -33,9 +35,8 @@ def send_mail(
         part['Content-Disposition'] = f'attachment; filename="{output_file_name}"' 
         msg.attach(part)
 
-    with smtplib.SMTP(smtp_server) as smtp:
-        if sender_password is not None:
-            smtp.login(sender_address, sender_password)
+    with smtplib.SMTP(smtp_server, smtp_server_port) as smtp:
+        smtp.login(smtp_server_user, sender_server_password)
         smtp.sendmail(sender_address, distribution_list, msg.as_string())
 
 
@@ -336,7 +337,10 @@ class App:
         self._tasks = Tasks(logger, self._conn)
 
         self._sender_address = os.getenv('TASKCUR_NOTIFICATIONS_ADDRESS')
-        self._smtp_server = os.getenv('TASKCUR_NOTIFICATIONS_SERVER')
+        self._smtp_server = os.getenv('TASKCUR_NOTIFICATIONS_SMTP_SERVER')
+        self._smtp_server_user = os.getenv('TASKCUR_NOTIFICATIONS_SMTP_SERVER_USER')
+        self._smtp_server_port = os.getenv('TASKCUR_NOTIFICATIONS_SMTP_SERVER_PORT')
+        self._smtp_server_password = os.getenv('TASKCUR_NOTIFICATIONS_SMTP_SERVER_PASSWORD')
 
     
     def _add_endpoints(self):
@@ -589,8 +593,10 @@ class App:
                 email_subject=f'TaskCur Summary for {user_name}',
                 sender_address=self._sender_address,
                 smtp_server=self._smtp_server,
+                smtp_server_user=self._smtp_server_user,
+                smtp_server_port=self._smtp_server_port,
+                smtp_server_password=self._smtp_server_password,
                 body=summary_html,
-                sender_password=os.getenv('TASKCUR_NOTIFICATIONS_PW'),
                 )
 
     def _weekly_summary(self):
@@ -630,8 +636,10 @@ class App:
             email_subject=f"Task Triggered: {triggered_task_info['task_title']}",
             sender_address=self._sender_address,
             smtp_server=self._smtp_server,
+            smtp_server_user=self._smtp_server_user,
+            smtp_server_port=self._smtp_server_port,
+            smtp_server_password=self._smtp_server_password,
             body=trigger_html,
-            sender_password=os.getenv('TASKCUR_NOTIFICATIONS_PW'),
             )
     
     def _purge_inactive_users(self):
