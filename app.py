@@ -19,7 +19,7 @@ def send_mail(
         smtp_server, 
         smtp_server_user,
         smtp_server_port,
-        sender_server_password,
+        smtp_server_password,
         body,
         file_buffer=None, 
         output_file_name=None
@@ -36,7 +36,7 @@ def send_mail(
         msg.attach(part)
 
     with smtplib.SMTP(smtp_server, smtp_server_port) as smtp:
-        smtp.login(smtp_server_user, sender_server_password)
+        smtp.login(smtp_server_user, smtp_server_password)
         smtp.sendmail(sender_address, distribution_list, msg.as_string())
 
 
