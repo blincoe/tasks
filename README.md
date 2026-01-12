@@ -1,58 +1,55 @@
-# To-do:
+# Development Setup
 
-# Installation / Deployment
+## Prerequisites
+- Python 3.12+
+- Docker
 
-Clone this repo: `git clone https://$GITHUB_TOKEN@github.com/blincoe/tasks.git`
+## 1. Create virtual environment
 
-Create virtual python environment:
 ```sh
-pip3 install virtualenv 
-virtualenv tasks_env -p /usr/bin/python3
+python3.12 -m venv tasks_env
 source tasks_env/bin/activate
-pip install Flask
-pip install pandas
+pip install -r requirements.txt
 ```
 
-Create `passenger_wsgi.py` file inside of host directory:
+## 2. Start MySQL with Docker
+
 ```sh
-vi host_name.com/passenger_wsgi.py
-```
-```python
-import sys
-import os
-import logging
-
-INTERP = os.path.expanduser("/home/ssh_user/tasks_env/bin/python3") ### In terminal, with the environment `venv` activated, type "which python3". The result would be used here.
-if sys.executable != INTERP:
-    os.execl(INTERP, INTERP, *sys.argv)
-
-sys.path.append(os.getcwd())
-
-wd = '/home/ssh_user/host_name.com/tasks/'
-sys.path.append(wd) # This is the address of your `app` folder, as shown below.
-
-from tasks.app import App
-logger = logging.getLogger('Tasks')
-app = App('Tasks', logger, wd=wd)
-application = app.app
-
-if __name__ == '__main__':
-    app.run()
-
+docker run -d --name tasks-mysql \
+  -e MYSQL_ROOT_PASSWORD=devpass \
+  -e MYSQL_DATABASE=tasks_test \
+  -p 3306:3306 \
+  mysql:8.0
 ```
 
-And then make executable:
+## 3. Set environment variables
+
 ```sh
-chmod +x host_name.com/passenger_wsgi.py
+export MYSQL_HOST=localhost
+export MYSQL_USER=root
+export MYSQL_PASS=devpass
+export MYSQL_TASKS_DB=tasks_test
 ```
 
-Add restart file:
+## 4. Initialize the database
+
+Copy the mysql directory and setup script into the container, then run it:
+
 ```sh
-mkdir host_name.com/tmp
-touch host_name.com/tmp/restart.txt 
+docker cp mysql tasks-mysql:/tmp/mysql
+docker cp setup.sh tasks-mysql:/tmp/setup.sh
+docker exec tasks-mysql bash -c "
+  export MYSQL_HOST=localhost MYSQL_USER=root MYSQL_PASS=devpass MYSQL_TASKS_DB=tasks_test
+  sh /tmp/setup.sh
+"
 ```
 
-Initialize database:
+## 5. Run the app
+
 ```sh
-sh tasks/setup.sh 
+source tasks_env/bin/activate
+python app.py
 ```
+
+The app will be available at http://localhost:8080
+
