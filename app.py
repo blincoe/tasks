@@ -2,7 +2,10 @@ import logging
 from mysql.connector import connect
 import pandas as pd
 import re
-from  flask import Flask, render_template, request, flash, url_for, redirect, make_response
+from flask import Flask, render_template, request, flash, url_for, redirect, make_response
+from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
+import bcrypt
+from functools import wraps
 import datetime
 import os
 
@@ -42,6 +45,52 @@ def send_mail(
 
 def tomorrow():
     return (datetime.datetime.now() + datetime.timedelta(1)).strftime('%Y-%m-%d')
+
+
+class User(UserMixin):
+    """Flask-Login User class wrapping user data from the Users DataFrame."""
+
+    def __init__(self, user_name, email_address, password_hash=None):
+        self.id = user_name
+        self.user_name = user_name
+        self.email_address = email_address
+        self.password_hash = password_hash
+
+    def check_password(self, password):
+        """Verify password against stored hash."""
+        if self.password_hash is None:
+            return False
+        return bcrypt.checkpw(
+            password.encode('utf-8'),
+            self.password_hash.encode('utf-8')
+        )
+
+    def needs_password_setup(self):
+        """Check if user needs to set initial password (migration case)."""
+        return self.password_hash is None
+
+    @staticmethod
+    def hash_password(password):
+        """Generate bcrypt hash for a password."""
+        return bcrypt.hashpw(
+            password.encode('utf-8'),
+            bcrypt.gensalt()
+        ).decode('utf-8')
+
+
+def require_same_user(f):
+    """Decorator to ensure logged-in user matches URL user_name parameter."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        user_name = kwargs.get('user_name')
+        if not current_user.is_authenticated:
+            flash('Please log in to access this page.')
+            return redirect('/login')
+        if user_name and current_user.user_name != user_name:
+            flash('You can only access your own data.')
+            return redirect(f'/user/{current_user.user_name}')
+        return f(*args, **kwargs)
+    return decorated_function
 
 
 class Tasks:
@@ -245,17 +294,47 @@ class Users:
         summary_notification_preference = kwargs['summary_notification_preference']
         trigger_notification_preference = kwargs['trigger_notification_preference']
         closed_task_display_count_preference = kwargs['closed_task_display_count_preference']
+        password_hash = kwargs.get('password_hash')
         self._logger.info(f'Adding user, {user_name}, to database')
         proc = 'add_user'
 
         self._conn.reconnect()
         cursor = self._conn.cursor()
-        cursor.callproc(proc, [user_name, email_address, summary_notification_preference, trigger_notification_preference, closed_task_display_count_preference])
+        cursor.callproc(proc, [user_name, email_address, summary_notification_preference, trigger_notification_preference, closed_task_display_count_preference, password_hash])
         proc_result = next(cursor.stored_results())
         created_at, updated_at = proc_result.fetchone()
         self._conn.close()
-        
-        self.user_info.loc[user_name] = [created_at, updated_at, email_address, summary_notification_preference, trigger_notification_preference, closed_task_display_count_preference]
+
+        self.user_info.loc[user_name] = [created_at, updated_at, email_address, summary_notification_preference, trigger_notification_preference, closed_task_display_count_preference, password_hash]
+
+    def get_user_for_login(self, user_name):
+        """Return a User object suitable for Flask-Login, or None if not found."""
+        if user_name not in self.user_info.index:
+            return None
+        user_data = self.user_info.loc[user_name]
+        password_hash = user_data.get('password_hash')
+        if pd.isna(password_hash):
+            password_hash = None
+        return User(
+            user_name=user_name,
+            email_address=user_data['email_address'],
+            password_hash=password_hash
+        )
+
+    def set_user_password(self, user_name, password_hash):
+        """Set password hash for a user (used for initial password setup)."""
+        self._logger.info(f'Setting password for user: {user_name}')
+        updated_at = datetime.datetime.now()
+
+        proc = 'set_password'
+
+        self._conn.reconnect()
+        cursor = self._conn.cursor()
+        cursor.callproc(proc, [user_name, password_hash, updated_at])
+        self._conn.close()
+
+        self.user_info.loc[user_name, 'password_hash'] = password_hash
+        self.user_info.loc[user_name, 'updated_at'] = updated_at
 
     def get_user_info(self, user_name):
         return self.user_info.loc[user_name].to_dict()
@@ -318,7 +397,7 @@ class Users:
 class App:
     def __init__(self, app_name, logger, wd=''):
         self.app = Flask(app_name, template_folder=f'{wd}templates')
-        self.app.secret_key = 'jfjfjhfdjkfd'
+        self.app.secret_key = os.getenv('FLASK_SECRET_KEY', 'dev-only-change-in-production')
 
         self._logger = logger
 
@@ -332,9 +411,20 @@ class App:
 
         self._conn = connect(**db_args)
 
-        self._add_endpoints()
         self._users = Users(logger, self._conn)
         self._tasks = Tasks(logger, self._conn)
+
+        # Initialize Flask-Login
+        self._login_manager = LoginManager()
+        self._login_manager.init_app(self.app)
+        self._login_manager.login_view = '_login_home'
+        self._login_manager.login_message = 'Please log in to access this page.'
+
+        @self._login_manager.user_loader
+        def load_user(user_name):
+            return self._users.get_user_for_login(user_name)
+
+        self._add_endpoints()
 
         self._sender_address = os.getenv('TASKCUR_NOTIFICATIONS_ADDRESS')
         self._smtp_server = os.getenv('TASKCUR_NOTIFICATIONS_SMTP_SERVER')
@@ -349,6 +439,13 @@ class App:
         self.app.add_url_rule(rule='/user-login', view_func=self._user_login, methods=['POST'])
         self.app.add_url_rule(rule='/create-user', endpoint='create-user', view_func=self._create_user, methods=['POST', 'GET'])
         self.app.add_url_rule(rule='/create-user-home', endpoint='create-user-home', view_func=self._create_user_home, methods=['POST', 'GET'])
+        self.app.add_url_rule(rule='/logout', endpoint='logout', view_func=self._logout)
+        self.app.add_url_rule(rule='/set-password/<user_name>', endpoint='set-password', view_func=self._set_password_home, methods=['GET'])
+        self.app.add_url_rule(rule='/set-password/<user_name>/submit', endpoint='set-password-submit', view_func=self._set_password, methods=['POST'])
+        self.app.add_url_rule(rule='/reset-password/<user_name>', endpoint='reset-password', view_func=self._reset_password_home, methods=['GET'])
+        self.app.add_url_rule(rule='/reset-password/<user_name>/submit', endpoint='reset-password-submit', view_func=self._reset_password, methods=['POST'])
+        self.app.add_url_rule(rule='/user/<user_name>/change-password', endpoint='change-password', view_func=self._change_password_home, methods=['GET'])
+        self.app.add_url_rule(rule='/user/<user_name>/change-password/submit', endpoint='change-password-submit', view_func=self._change_password, methods=['POST'])
 
         self.app.add_url_rule(rule='/user/<user_name>', endpoint='/user/<user_name>', view_func=self._user_home, methods=['POST', 'GET'])
         self.app.add_url_rule(rule='/user/<user_name>/create-task-home', endpoint='/user/<user_name>/create-task-home', view_func=self._create_task_home, methods=['POST', 'GET'])
@@ -374,9 +471,30 @@ class App:
 
         self.app.after_request(self._add_response_headers)
 
+    def _check_auth(self, user_name=None):
+        """Check if user is authenticated and optionally if they match user_name."""
+        if not current_user.is_authenticated:
+            flash('Please log in to access this page.')
+            return redirect('/login')
+        if user_name and current_user.user_name != user_name:
+            flash('You can only access your own data.')
+            return redirect(f'/user/{current_user.user_name}')
+        return None
+
+    def _check_task_ownership(self, task_id):
+        """Check if current user owns the task. Returns redirect if not authorized, None if OK."""
+        if not current_user.is_authenticated:
+            flash('Please log in to access this page.')
+            return redirect('/login')
+        task_info = self._tasks.get_task_info(task_id)
+        if task_info['user_name'] != current_user.user_name:
+            flash('You can only access your own tasks.')
+            return redirect(f'/user/{current_user.user_name}')
+        return None
+
     def _index(self):
         return redirect('/login')
-    
+
     def _login_home(self):
         return render_template('login.html')
     
@@ -384,14 +502,20 @@ class App:
         return render_template('create_user.html')
     
     def _update_user_home(self, user_name):
+        auth_redirect = self._check_auth(user_name)
+        if auth_redirect:
+            return auth_redirect
         user_info = self._users.get_user_info(user_name)
         return render_template(
             'update_user.html',
             user_name=user_name,
             **user_info
             )
-    
+
     def _update_user(self, user_name):
+        auth_redirect = self._check_auth(user_name)
+        if auth_redirect:
+            return auth_redirect
         self._users.update_user(user_name, **request.form)
         user_info = self._users.get_user_info(user_name)
         flash(f'User Updated')
@@ -402,6 +526,9 @@ class App:
             )
 
     def _update_task_home(self, task_id):
+        auth_redirect = self._check_task_ownership(task_id)
+        if auth_redirect:
+            return auth_redirect
         task_info = self._tasks.get_task_info(task_id)
         if task_info['status'] == 'scheduled':
             task_status = f"Scheduled - {task_info['trigger_date']}"
@@ -416,6 +543,9 @@ class App:
             )
     
     def _update_task(self, task_id):
+        auth_redirect = self._check_task_ownership(task_id)
+        if auth_redirect:
+            return auth_redirect
         self._tasks.update_task(task_id, **request.form)
         task_info = self._tasks.get_task_info(task_id)
         if task_info['status'] == 'scheduled':
@@ -432,12 +562,18 @@ class App:
             )
     
     def _close_task(self, task_id):
+        auth_redirect = self._check_task_ownership(task_id)
+        if auth_redirect:
+            return auth_redirect
         task_info = self._tasks.get_task_info(task_id)
         self._tasks.close_task(task_id)
         user_name = task_info['user_name']
         return redirect(f'/user/{user_name}')
 
     def _close_task_and_recreate(self, task_id):
+        auth_redirect = self._check_task_ownership(task_id)
+        if auth_redirect:
+            return auth_redirect
         task_info = self._tasks.get_task_info(task_id)
         self._tasks.close_task(task_id)
         return render_template(
@@ -445,8 +581,11 @@ class App:
             min_date=tomorrow(),
             **task_info
             )
-    
+
     def _close_task_home(self, task_id):
+        auth_redirect = self._check_task_ownership(task_id)
+        if auth_redirect:
+            return auth_redirect
         task_info = self._tasks.get_task_info(task_id)
         task_info['task_description'] = task_info['task_description'].replace('\r\n', '<br>')
         if task_info['status'] == 'scheduled':
@@ -461,6 +600,9 @@ class App:
             )
     
     def _task_home(self, task_id):
+        auth_redirect = self._check_task_ownership(task_id)
+        if auth_redirect:
+            return auth_redirect
         task_info = self._tasks.get_task_info(task_id)
         task_info['task_description'] = task_info['task_description'].replace('\r\n', '<br>')
         if task_info['status'] == 'scheduled':
@@ -475,29 +617,148 @@ class App:
             )
     
     def _create_task_home(self, user_name):
+        auth_redirect = self._check_auth(user_name)
+        if auth_redirect:
+            return auth_redirect
         return render_template('create_task.html', user_name=user_name, min_date=tomorrow())
-    
+
     def _create_task(self, user_name):
+        auth_redirect = self._check_auth(user_name)
+        if auth_redirect:
+            return auth_redirect
         self._tasks.add_task(user_name, **request.form)
         flash(f'Task Created')
         return render_template('create_task.html', user_name=user_name, min_date=tomorrow())
     
     def _user_login(self):
         user_name = request.form['user_name']
+        password = request.form.get('password', '')
+
         if user_name not in self._users.user_info.index:
-            flash(f'User ID, {user_name}, does not exists. Enter another ID or create a new one.')
+            flash(f'User ID, {user_name}, does not exist. Enter another ID or create a new one.')
             return render_template('login.html')
-        else:
-            return redirect(f'/user/{user_name}')
-    
+
+        user = self._users.get_user_for_login(user_name)
+
+        if user.needs_password_setup():
+            flash('Please set your password to continue.')
+            return redirect(url_for('set-password', user_name=user_name))
+
+        if not user.check_password(password):
+            flash('Invalid password. Please try again.')
+            return render_template('login.html')
+
+        login_user(user)
+        return redirect(f'/user/{user_name}')
+
+    def _logout(self):
+        logout_user()
+        flash('You have been logged out.')
+        return redirect('/login')
+
+    def _set_password_home(self, user_name):
+        if user_name not in self._users.user_info.index:
+            flash('User not found.')
+            return redirect('/login')
+        return render_template('set_password.html', user_name=user_name)
+
+    def _set_password(self, user_name):
+        password = request.form.get('password', '')
+        confirm_password = request.form.get('confirm_password', '')
+
+        if len(password) < 8:
+            flash('Password must be at least 8 characters long.')
+            return render_template('set_password.html', user_name=user_name)
+
+        if password != confirm_password:
+            flash('Passwords do not match.')
+            return render_template('set_password.html', user_name=user_name)
+
+        password_hash = User.hash_password(password)
+        self._users.set_user_password(user_name, password_hash)
+
+        user = self._users.get_user_for_login(user_name)
+        login_user(user)
+        flash('Password set successfully!')
+        return redirect(f'/user/{user_name}')
+
+    def _reset_password_home(self, user_name):
+        if not current_user.is_authenticated:
+            flash('Please log in to access this page.')
+            return redirect('/login')
+        if user_name not in self._users.user_info.index:
+            flash('User not found.')
+            return redirect(f'/user/{current_user.user_name}')
+        return render_template('reset_password.html', user_name=user_name)
+
+    def _reset_password(self, user_name):
+        if not current_user.is_authenticated:
+            flash('Please log in to access this page.')
+            return redirect('/login')
+        if user_name not in self._users.user_info.index:
+            flash('User not found.')
+            return redirect(f'/user/{current_user.user_name}')
+
+        password = request.form.get('password', '')
+        confirm_password = request.form.get('confirm_password', '')
+
+        if len(password) < 8:
+            flash('Password must be at least 8 characters long.')
+            return render_template('reset_password.html', user_name=user_name)
+
+        if password != confirm_password:
+            flash('Passwords do not match.')
+            return render_template('reset_password.html', user_name=user_name)
+
+        password_hash = User.hash_password(password)
+        self._users.set_user_password(user_name, password_hash)
+        flash(f'Password reset successfully for {user_name}.')
+        return redirect(f'/user/{current_user.user_name}')
+
+    def _change_password_home(self, user_name):
+        auth_redirect = self._check_auth(user_name)
+        if auth_redirect:
+            return auth_redirect
+        return render_template('change_password.html', user_name=user_name)
+
+    def _change_password(self, user_name):
+        auth_redirect = self._check_auth(user_name)
+        if auth_redirect:
+            return auth_redirect
+
+        current_password = request.form.get('current_password', '')
+        new_password = request.form.get('new_password', '')
+        confirm_password = request.form.get('confirm_password', '')
+
+        user = self._users.get_user_for_login(user_name)
+        if not user.check_password(current_password):
+            flash('Current password is incorrect.')
+            return render_template('change_password.html', user_name=user_name)
+
+        if len(new_password) < 8:
+            flash('New password must be at least 8 characters long.')
+            return render_template('change_password.html', user_name=user_name)
+
+        if new_password != confirm_password:
+            flash('New passwords do not match.')
+            return render_template('change_password.html', user_name=user_name)
+
+        password_hash = User.hash_password(new_password)
+        self._users.set_user_password(user_name, password_hash)
+        flash('Password changed successfully.')
+        return redirect(f'/user/{user_name}')
+
     def _user_home(self, user_name):
+        auth_redirect = self._check_auth(user_name)
+        if auth_redirect:
+            return auth_redirect
         user_info = self._users.get_user_info(user_name)
         closed_task_display_count_preference = user_info['closed_task_display_count_preference']
         open_task_html = self._tasks.get_task_table_for_user_and_status(user_name, closed_task_display_count_preference, 'open')
         scheduled_task_html = self._tasks.get_task_table_for_user_and_status(user_name, closed_task_display_count_preference, 'scheduled')
         closed_task_html = self._tasks.get_task_table_for_user_and_status(user_name, closed_task_display_count_preference, 'closed')
         return render_template(
-            'user_home.html', 
+            'user_home.html',
             user_name=user_name,
             open_tasks=open_task_html,
             scheduled_tasks=scheduled_task_html,
@@ -513,10 +774,24 @@ class App:
         form = request.form.to_dict()
         form['user_name'] = form['user_name'].strip()
         form['email_address'] = form['email_address'].replace(' ', '')
+        password = form.pop('password', '')
+        confirm_password = form.pop('confirm_password', '')
+
+        if len(password) < 8:
+            flash('Password must be at least 8 characters long.')
+            return render_template('create_user.html')
+
+        if password != confirm_password:
+            flash('Passwords do not match.')
+            return render_template('create_user.html')
+
         valid_new_user_info, message = self._validate_new_user_info(**form)
         if valid_new_user_info:
+            form['password_hash'] = User.hash_password(password)
             self._users.add_user(**form)
             user_name = form['user_name']
+            user = self._users.get_user_for_login(user_name)
+            login_user(user)
             return redirect(f'/user/{user_name}')
         else:
             flash(message)
@@ -546,14 +821,20 @@ class App:
         return all([bool(re.fullmatch(regex, x_)) for x_ in email_address.split(',')])
     
     def _modify_task_options(self, task_id):
+        auth_redirect = self._check_task_ownership(task_id)
+        if auth_redirect:
+            return auth_redirect
         if request.form['action'] == 'Update Task':
             return redirect(f'/task/{task_id}/update-home')
         elif request.form['action'] == 'Close Task':
             return redirect(f'/task/{task_id}/close-home')
         else:
             raise ValueError(f"unknown  value: {request.form['action']}")
-    
+
     def _close_task_options(self, task_id):
+        auth_redirect = self._check_task_ownership(task_id)
+        if auth_redirect:
+            return auth_redirect
         if request.form['action'] == 'Close Task':
             return redirect(f'/task/{task_id}/close')
         elif request.form['action'] == 'Close Task and Re-Create':
@@ -562,12 +843,19 @@ class App:
             raise ValueError(f"unknown  value: {request.form['action']}")
     
     def _delete_task(self, task_id):
+        auth_redirect = self._check_task_ownership(task_id)
+        if auth_redirect:
+            return auth_redirect
         task_info = self._tasks.get_task_info(task_id)
         self._tasks.delete_task(task_id)
         user_name = task_info['user_name']
         return redirect(f'/user/{user_name}')
     
     def _delete_user(self, user_name):
+        auth_redirect = self._check_auth(user_name)
+        if auth_redirect:
+            return auth_redirect
+        logout_user()
         self._users.delete_user(user_name)
         return redirect('/login')
 

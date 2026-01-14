@@ -6,4 +6,5 @@ create table users (
     , summary_notification_preference varchar(20) not null
     , trigger_notification_preference varchar(20) not null
     , closed_task_display_count_preference int not null
+    , password_hash varchar(255) null
 );
