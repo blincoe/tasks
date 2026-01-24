@@ -6,21 +6,24 @@ create procedure add_user (
     , _summary_notification_preference varchar(20)
     , _trigger_notification_preference varchar(20)
     , _closed_task_display_count_preference int
+    , _password_hash varchar(255)
     )
     begin
-    
+
     insert into users (
         user_name
         , email_address
         , summary_notification_preference
         , trigger_notification_preference
         , closed_task_display_count_preference
+        , password_hash
         ) values (
             _user_name
             , _email_address
             , _summary_notification_preference
             , _trigger_notification_preference
             , _closed_task_display_count_preference
+            , _password_hash
             )
         ;
     

@@ -11,6 +11,7 @@ create procedure get_user_info ()
         , summary_notification_preference
         , trigger_notification_preference
         , closed_task_display_count_preference
+        , password_hash
     from users
     ;
     
