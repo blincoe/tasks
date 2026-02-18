@@ -13,7 +13,7 @@
     </head>
     <body>
         <H1>User Login</H1>
-        <form action="user-login" method="post">
+        <form action="user-login{% if request.args.get('next') %}?next={{ request.args.get('next') }}{% endif %}" method="post">
             <div class="form-group">
                 User Name: <input type="text" name="user_name" required>
             </div>

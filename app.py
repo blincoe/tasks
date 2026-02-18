@@ -3,6 +3,7 @@ from mysql.connector import connect
 import pandas as pd
 import re
 from flask import Flask, render_template, request, flash, url_for, redirect, make_response
+from urllib.parse import urlparse
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 import bcrypt
 from functools import wraps
@@ -45,6 +46,15 @@ def send_mail(
 
 def tomorrow():
     return (datetime.datetime.now() + datetime.timedelta(1)).strftime('%Y-%m-%d')
+
+
+def is_safe_redirect_url(target):
+    """Validate that redirect target is a safe internal URL."""
+    if not target:
+        return False
+    parsed = urlparse(target)
+    # Only allow relative URLs (no scheme or netloc)
+    return not parsed.scheme and not parsed.netloc
 
 
 class User(UserMixin):
@@ -475,21 +485,28 @@ class App:
         """Check if user is authenticated and optionally if they match user_name."""
         if not current_user.is_authenticated:
             flash('Please log in to access this page.')
-            return redirect('/login')
+            next_url = request.path
+            return redirect(f'/login?next={next_url}')
         if user_name and current_user.user_name != user_name:
-            flash('You can only access your own data.')
-            return redirect(f'/user/{current_user.user_name}')
+            flash(f'This page belongs to {user_name}. Please log in as that user to access it.')
+            logout_user()
+            next_url = request.path
+            return redirect(f'/login?next={next_url}')
         return None
 
     def _check_task_ownership(self, task_id):
         """Check if current user owns the task. Returns redirect if not authorized, None if OK."""
         if not current_user.is_authenticated:
             flash('Please log in to access this page.')
-            return redirect('/login')
+            next_url = request.path
+            return redirect(f'/login?next={next_url}')
         task_info = self._tasks.get_task_info(task_id)
-        if task_info['user_name'] != current_user.user_name:
-            flash('You can only access your own tasks.')
-            return redirect(f'/user/{current_user.user_name}')
+        task_owner = task_info['user_name']
+        if task_owner != current_user.user_name:
+            flash(f'This task belongs to {task_owner}. Please log in as that user to access it.')
+            logout_user()
+            next_url = request.path
+            return redirect(f'/login?next={next_url}')
         return None
 
     def _index(self):
@@ -633,6 +650,7 @@ class App:
     def _user_login(self):
         user_name = request.form['user_name']
         password = request.form.get('password', '')
+        next_url = request.args.get('next')
 
         if user_name not in self._users.user_info.index:
             flash(f'User ID, {user_name}, does not exist. Enter another ID or create a new one.')
@@ -648,7 +666,9 @@ class App:
             flash('Invalid password. Please try again.')
             return render_template('login.html')
 
-        login_user(user)
+        login_user(user, remember=True)
+        if next_url and is_safe_redirect_url(next_url):
+            return redirect(next_url)
         return redirect(f'/user/{user_name}')
 
     def _logout(self):
@@ -678,7 +698,7 @@ class App:
         self._users.set_user_password(user_name, password_hash)
 
         user = self._users.get_user_for_login(user_name)
-        login_user(user)
+        login_user(user, remember=True)
         flash('Password set successfully!')
         return redirect(f'/user/{user_name}')
 
@@ -791,7 +811,7 @@ class App:
             self._users.add_user(**form)
             user_name = form['user_name']
             user = self._users.get_user_for_login(user_name)
-            login_user(user)
+            login_user(user, remember=True)
             return redirect(f'/user/{user_name}')
         else:
             flash(message)
